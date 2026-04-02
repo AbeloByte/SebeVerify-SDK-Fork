@@ -1,0 +1,59 @@
+"use client"
+
+import { useVerificationStore } from "@/lib/verification-store"
+
+import { StepHeader } from "./step-header"
+import { ProgressBar } from "./progress-bar"
+import { IntroScreen } from "./intro-screen"
+import { DocumentTypeSelector } from "./document-type-selector"
+import { IdFrontCapture, IdBackCapture } from "./id-capture"
+import { ReviewDocument } from "./review-document"
+import { SelfieCapture } from "./selfie-capture"
+import { SubmittingScreen } from "./submitting-screen"
+import { SubmittedScreen } from "./submitted-screen"
+import { ErrorScreen } from "./error-screen"
+
+interface VerificationFlowProps {
+  onComplete?: () => void
+  onClose?: () => void
+  returnUrl?: string
+}
+
+export function VerificationFlow({ onComplete, onClose, returnUrl }: VerificationFlowProps) {
+  const currentStep = useVerificationStore((state) => state.currentStep)
+
+  const renderStep = () => {
+    switch (currentStep) {
+      case 'intro':
+        return <IntroScreen />
+      case 'doc-select':
+        return <DocumentTypeSelector />
+      case 'id-front':
+        return <IdFrontCapture />
+      case 'id-back':
+        return <IdBackCapture />
+      case 'review':
+        return <ReviewDocument />
+      case 'selfie':
+        return <SelfieCapture />
+      case 'submitting':
+        return <SubmittingScreen />
+      case 'submitted':
+        return <SubmittedScreen onComplete={onComplete} returnUrl={returnUrl} />
+      case 'error':
+        return <ErrorScreen onRetry={() => {}} onClose={onClose} />
+      default:
+        return <IntroScreen />
+    }
+  }
+
+  return (
+    <div className="flex flex-col min-h-screen bg-background">
+      <StepHeader onClose={onClose} />
+      <ProgressBar currentStep={currentStep} />
+      <main className="flex-1 flex flex-col overflow-auto">
+        {renderStep()}
+      </main>
+    </div>
+  )
+}
