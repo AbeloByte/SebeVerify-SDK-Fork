@@ -6,6 +6,7 @@ import { StepHeader } from "./step-header"
 import { ProgressBar } from "./progress-bar"
 import { IntroScreen } from "./intro-screen"
 import { DocumentTypeSelector } from "./document-type-selector"
+import { CameraAccessScreen } from "./camera-access-screen"
 import { IdFrontCapture, IdBackCapture } from "./id-capture"
 import { ReviewDocument } from "./review-document"
 import { SelfieCapture } from "./selfie-capture"
@@ -28,6 +29,8 @@ export function VerificationFlow({ onComplete, onClose, returnUrl }: Verificatio
         return <IntroScreen />
       case 'doc-select':
         return <DocumentTypeSelector />
+      case 'id-camera-prep':
+        return <CameraAccessScreen />
       case 'id-front':
         return <IdFrontCapture />
       case 'id-back':
@@ -48,10 +51,10 @@ export function VerificationFlow({ onComplete, onClose, returnUrl }: Verificatio
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-background">
+    <div className="flex flex-col min-h-[100dvh] bg-background">
       <StepHeader onClose={onClose} />
       <ProgressBar currentStep={currentStep} />
-      <main className="flex-1 flex flex-col overflow-auto">
+      <main className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
         {renderStep()}
       </main>
     </div>

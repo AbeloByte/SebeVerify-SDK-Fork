@@ -17,12 +17,6 @@ const documentTypes: { type: DocumentType; label: string; icon: typeof CreditCar
     label: 'Passport',
     icon: BookOpen,
     description: 'International travel document'
-  },
-  {
-    type: 'driver_license',
-    label: 'Driver License',
-    icon: Car,
-    description: 'Government-issued driving permit'
   }
 ]
 
@@ -31,7 +25,7 @@ export function DocumentTypeSelector() {
 
   const handleSelect = (type: DocumentType) => {
     setDocumentType(type)
-    setStep('id-front')
+    setStep('id-camera-prep')
   }
 
   return (

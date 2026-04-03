@@ -14,7 +14,7 @@ export function ReviewDocument() {
 
   const handleRetakeFront = () => {
     setFrontImage('')
-    setStep('id-front')
+    setStep('id-camera-prep')
   }
 
   const handleRetakeBack = () => {

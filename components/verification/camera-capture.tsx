@@ -1,7 +1,7 @@
 "use client"
 
 import { useRef, useState, useCallback, useEffect } from "react"
-import { Camera, RotateCcw, Check, AlertCircle } from "lucide-react"
+import { Camera, RotateCcw, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
@@ -11,7 +11,7 @@ interface CameraCaptureProps {
   capturedImage?: string | null
   title: string
   instructions: string
-  overlayType?: 'document' | 'selfie'
+  overlayType?: "document" | "selfie"
 }
 
 export function CameraCapture({
@@ -20,131 +20,189 @@ export function CameraCapture({
   capturedImage,
   title,
   instructions,
-  overlayType = 'document'
+  overlayType = "document",
 }: CameraCaptureProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [stream, setStream] = useState<MediaStream | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isReady, setIsReady] = useState(false)
-  const [facingMode, setFacingMode] = useState<'user' | 'environment'>(
-    overlayType === 'selfie' ? 'user' : 'environment'
+  const [facingMode, setFacingMode] = useState<"user" | "environment">(
+    overlayType === "selfie" ? "user" : "environment"
   )
 
-  const startCamera = useCallback(async () => {
-    try {
-      setError(null)
-      
-      // Stop existing stream if any
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop())
+  const stopCamera = useCallback(() => {
+    setStream((prev) => {
+      if (prev) {
+        prev.getTracks().forEach((track) => track.stop())
       }
+      return null
+    })
+    setIsReady(false)
+  }, [])
 
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: facingMode,
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        },
-        audio: false
-      })
+  const startCamera = useCallback(
+    async (overrideFacing?: "user" | "environment") => {
+      const mode = overrideFacing ?? facingMode
+      try {
+        setError(null)
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = mediaStream
-        videoRef.current.onloadedmetadata = () => {
-          setIsReady(true)
+        if (typeof window !== "undefined" && !window.isSecureContext) {
+          setError(
+            "Camera needs a secure connection (HTTPS). On your phone, open the app URL over HTTPS (e.g. ngrok or your deployed site), or use USB debugging with localhost — plain http:// to a LAN IP is blocked by browsers for camera access."
+          )
+          return
+        }
+
+        if (!navigator.mediaDevices?.getUserMedia) {
+          setError(
+            "Camera is not available in this browser. Try Safari or Chrome, allow permissions, and use HTTPS if you are not on localhost."
+          )
+          return
+        }
+
+        setStream((prev) => {
+          if (prev) {
+            prev.getTracks().forEach((track) => track.stop())
+          }
+          return null
+        })
+
+        const mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: mode } },
+          audio: false,
+        })
+
+        // Just set the stream! The useEffect will catch it and attach it to the video element.
+        setStream(mediaStream)
+      } catch (err) {
+        console.error("Camera error:", err)
+        const e = err as Error
+        if (e.name === "AbortError" || e.message?.includes("Timeout")) {
+          setError(
+            "Camera took too long to start. Please close other apps using the camera and try again."
+          )
+        } else if (e.name === "NotAllowedError") {
+          setError(
+            "Camera access was denied. Tap “Allow camera” again and choose Allow in the browser prompt, or enable camera in site settings."
+          )
+        } else if (e.name === "NotFoundError") {
+          setError("No camera found on this device. Please use a device with a camera.")
+        } else {
+          setError(
+            `Unable to access camera (${e.name}: ${e.message}). Please ensure camera permissions are granted and try again.`
+          )
         }
       }
-      setStream(mediaStream)
-    } catch (err) {
-      console.error('[v0] Camera error:', err)
-      const error = err as Error
-      if (error.name === 'AbortError' || error.message?.includes('Timeout')) {
-        setError('Camera took too long to start. Please close other apps using the camera and try again.')
-      } else if (error.name === 'NotAllowedError') {
-        setError('Camera access was denied. Please allow camera permissions in your browser settings.')
-      } else if (error.name === 'NotFoundError') {
-        setError('No camera found on this device. Please use a device with a camera.')
-      } else {
-        setError('Unable to access camera. Please ensure camera permissions are granted and try again.')
-      }
-    }
-  }, [facingMode, stream])
-
-  const stopCamera = useCallback(() => {
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop())
-      setStream(null)
-    }
-    setIsReady(false)
-  }, [stream])
+    },
+    [facingMode]
+  )
 
   useEffect(() => {
-    if (!capturedImage) {
-      startCamera()
-    }
-    
     return () => {
       stopCamera()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [capturedImage, facingMode])
+  }, [stopCamera])
+
+  // React Lifecycle Fix: Bind stream to video AFTER it mounts
+  useEffect(() => {
+    if (videoRef.current && stream && videoRef.current.srcObject !== stream) {
+      videoRef.current.srcObject = stream
+      videoRef.current.onloadedmetadata = () => setIsReady(true)
+      videoRef.current.onplay = () => setIsReady(true)
+      videoRef.current.play().catch(console.error)
+    }
+  }, [stream])
 
   const captureImage = useCallback(() => {
     if (!videoRef.current || !canvasRef.current) return
 
     const video = videoRef.current
     const canvas = canvasRef.current
-    const context = canvas.getContext('2d')
+    const context = canvas.getContext("2d")
 
     if (!context) return
 
     canvas.width = video.videoWidth
     canvas.height = video.videoHeight
-    
-    // Flip horizontally for selfie mode
-    if (facingMode === 'user') {
+
+    if (facingMode === "user") {
       context.translate(canvas.width, 0)
       context.scale(-1, 1)
     }
-    
+
     context.drawImage(video, 0, 0, canvas.width, canvas.height)
-    
-    const imageData = canvas.toDataURL('image/jpeg', 0.8)
+
+    const imageData = canvas.toDataURL("image/jpeg", 0.8)
     onCapture(imageData)
     stopCamera()
   }, [facingMode, onCapture, stopCamera])
 
   const handleRetake = () => {
     onRetake?.()
-    startCamera()
+    void startCamera()
   }
 
   const toggleCamera = () => {
-    setFacingMode(prev => prev === 'user' ? 'environment' : 'user')
+    const next = facingMode === "user" ? "environment" : "user"
+    setFacingMode(next)
+    void startCamera(next)
   }
 
   if (error) {
     return (
       <div className="flex flex-col flex-1 px-6 py-6">
         <div className="mb-6">
-          <h1 className="text-xl font-bold text-foreground mb-2">{title}</h1>
+          <h1 className="mb-2 text-xl font-bold text-foreground">{title}</h1>
           <p className="text-muted-foreground">{instructions}</p>
         </div>
-        
-        <div className="flex-1 flex flex-col items-center justify-center">
-          <div className="h-16 w-16 rounded-full bg-amber-500/10 flex items-center justify-center mb-4">
+
+        <div className="flex flex-1 flex-col items-center justify-center">
+          <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-amber-500/10">
             <Camera className="h-8 w-8 text-amber-500" />
           </div>
-          <h2 className="text-lg font-semibold text-foreground mb-2">Camera Access Required</h2>
-          <p className="text-center text-muted-foreground mb-6 max-w-sm">{error}</p>
-          <Button onClick={startCamera} size="lg" className="h-12 px-8">
-            <RotateCcw className="h-4 w-4 mr-2" />
+          <h2 className="mb-2 text-lg font-semibold text-foreground">Camera Access Required</h2>
+          <p className="mb-6 max-w-sm text-center text-muted-foreground">{error}</p>
+          <Button type="button" onClick={() => void startCamera()} size="lg" className="h-12 px-8">
+            <RotateCcw className="mr-2 h-4 w-4" />
             Retry Camera
           </Button>
-          <p className="text-xs text-muted-foreground mt-4 text-center max-w-xs">
+          <p className="mt-4 max-w-xs text-center text-xs text-muted-foreground">
             Tip: Make sure no other apps are using your camera
           </p>
+        </div>
+      </div>
+    )
+  }
+
+  const showPermissionPrompt = !capturedImage && !stream
+
+  if (showPermissionPrompt) {
+    return (
+      <div className="flex flex-col flex-1 px-6 py-6">
+        <div className="mb-6">
+          <h1 className="mb-2 text-xl font-bold text-foreground">{title}</h1>
+          <p className="text-muted-foreground">{instructions}</p>
+        </div>
+
+        <div className="flex flex-1 flex-col items-center justify-center gap-6">
+          <div className="flex min-h-[220px] w-full max-w-sm flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-muted/30 px-6 py-10">
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
+              <Camera className="h-8 w-8 text-primary" />
+            </div>
+            <p className="mb-6 text-center text-sm text-muted-foreground">
+              The browser will ask to use your camera. This must be allowed to continue.
+            </p>
+            <Button
+              type="button"
+              onClick={() => void startCamera()}
+              size="lg"
+              className="h-12 w-full max-w-xs touch-manipulation"
+            >
+              <Camera className="mr-2 h-5 w-5" />
+              Allow camera
+            </Button>
+          </div>
         </div>
       </div>
     )
@@ -153,17 +211,17 @@ export function CameraCapture({
   return (
     <div className="flex flex-col flex-1 px-6 py-6">
       <div className="mb-4">
-        <h1 className="text-xl font-bold text-foreground mb-2">{title}</h1>
+        <h1 className="mb-2 text-xl font-bold text-foreground">{title}</h1>
         <p className="text-muted-foreground">{instructions}</p>
       </div>
 
-      <div className="flex-1 flex flex-col">
-        <div className="relative flex-1 rounded-2xl overflow-hidden bg-foreground/5 min-h-[300px]">
+      <div className="flex flex-1 flex-col">
+        <div className="relative min-h-[300px] flex-1 overflow-hidden rounded-2xl bg-foreground/5">
           {capturedImage ? (
             <img
               src={capturedImage}
               alt="Captured"
-              className="absolute inset-0 w-full h-full object-cover"
+              className="absolute inset-0 h-full w-full object-cover"
             />
           ) : (
             <>
@@ -173,27 +231,26 @@ export function CameraCapture({
                 playsInline
                 muted
                 className={cn(
-                  "absolute inset-0 w-full h-full object-cover",
-                  facingMode === 'user' && "scale-x-[-1]"
+                  "absolute inset-0 h-full w-full object-cover",
+                  facingMode === "user" && "scale-x-[-1]"
                 )}
               />
-              
-              {/* Overlay guide */}
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                {overlayType === 'document' ? (
-                  <div className="w-[85%] aspect-[1.6] border-2 border-dashed border-primary/50 rounded-lg" />
+
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                {overlayType === "document" ? (
+                  <div className="aspect-[1.6] w-[85%] rounded-lg border-2 border-dashed border-primary/50" />
                 ) : (
-                  <div className="w-48 h-48 border-2 border-dashed border-primary/50 rounded-full" />
+                  <div className="h-48 w-48 rounded-full border-2 border-dashed border-primary/50" />
                 )}
               </div>
             </>
           )}
-          
-          {/* Camera toggle button */}
-          {!capturedImage && overlayType !== 'selfie' && (
+
+          {!capturedImage && overlayType !== "selfie" && (
             <button
+              type="button"
               onClick={toggleCamera}
-              className="absolute top-4 right-4 h-10 w-10 rounded-full bg-foreground/20 backdrop-blur-sm flex items-center justify-center text-background"
+              className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-foreground/20 text-background backdrop-blur-sm touch-manipulation"
             >
               <RotateCcw className="h-5 w-5" />
             </button>
@@ -206,30 +263,33 @@ export function CameraCapture({
           {capturedImage ? (
             <div className="flex gap-3">
               <Button
+                type="button"
                 onClick={handleRetake}
                 variant="outline"
-                className="flex-1 h-12"
+                className="h-12 flex-1"
               >
-                <RotateCcw className="h-4 w-4 mr-2" />
+                <RotateCcw className="mr-2 h-4 w-4" />
                 Retake
               </Button>
               <Button
+                type="button"
                 onClick={() => onCapture(capturedImage)}
-                className="flex-1 h-12"
+                className="h-12 flex-1"
               >
-                <Check className="h-4 w-4 mr-2" />
+                <Check className="mr-2 h-4 w-4" />
                 Use Photo
               </Button>
             </div>
           ) : (
             <Button
+              type="button"
               onClick={captureImage}
               disabled={!isReady}
-              className="w-full h-12"
+              className="h-12 w-full"
               size="lg"
             >
-              <Camera className="h-5 w-5 mr-2" />
-              {isReady ? 'Capture' : 'Starting Camera...'}
+              <Camera className="mr-2 h-5 w-5" />
+              {isReady ? "Capture" : "Starting camera…"}
             </Button>
           )}
         </div>

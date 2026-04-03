@@ -18,6 +18,7 @@ const steps: { key: VerificationStep; label: string }[] = [
 const stepOrder: VerificationStep[] = [
   'intro',
   'doc-select',
+  'id-camera-prep',
   'id-front',
   'id-back',
   'review',
@@ -40,8 +41,10 @@ export function ProgressBar({ currentStep }: ProgressBarProps) {
         {steps.map((step, index) => {
           const stepIndex = stepOrder.indexOf(step.key)
           const isCompleted = currentIndex > stepIndex
-          const isCurrent = currentIndex === stepIndex || 
-            (step.key === 'id-front' && currentStep === 'review')
+          const isCurrent =
+            currentIndex === stepIndex ||
+            (step.key === 'id-front' &&
+              (currentStep === 'review' || currentStep === 'id-camera-prep'))
           
           return (
             <div key={step.key} className="flex flex-col items-center flex-1">

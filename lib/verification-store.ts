@@ -1,8 +1,20 @@
 import { create } from 'zustand'
+import {
+  apiCompleteMockSession,
+  apiUpdateMockSession,
+  isMockSessionId,
+} from '@/lib/mock-api-client'
+
+const MOCK_PLACEHOLDER_IMAGES = {
+  front: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciLz4=", // Empty transparent SVG as mock
+  back: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciLz4=",
+  selfie: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciLz4=",
+}
 
 export type VerificationStep = 
   | 'intro' 
   | 'doc-select' 
+  | 'id-camera-prep'
   | 'id-front' 
   | 'id-back' 
   | 'review' 
@@ -31,7 +43,7 @@ interface VerificationState {
   selfieImage: string | null
   submittedAt: string | null
   errorMessage: string | null
-  
+
   // Actions
   setSessionId: (id: string) => void
   setStep: (step: VerificationStep) => void
@@ -49,6 +61,7 @@ interface VerificationState {
 const stepOrder: VerificationStep[] = [
   'intro',
   'doc-select',
+  'id-camera-prep',
   'id-front',
   'id-back',
   'review',
@@ -71,13 +84,46 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
   
   setStep: (step) => set({ currentStep: step }),
   
-  setDocumentType: (type) => set({ documentType: type }),
-  
-  setFrontImage: (image) => set({ frontImage: image }),
-  
-  setBackImage: (image) => set({ backImage: image }),
-  
-  setSelfieImage: (image) => set({ selfieImage: image }),
+  setDocumentType: (type) => {
+    set({ documentType: type })
+    const sid = get().sessionId
+    if (isMockSessionId(sid)) {
+      void apiUpdateMockSession(sid!, { documentType: type })
+    }
+  },
+
+  setFrontImage: (image) => {
+    const sid = get().sessionId
+    if (isMockSessionId(sid)) {
+      const path = MOCK_PLACEHOLDER_IMAGES.front
+      set({ frontImage: path })
+      void apiUpdateMockSession(sid!, { frontImage: path })
+    } else {
+      set({ frontImage: image })
+    }
+  },
+
+  setBackImage: (image) => {
+    const sid = get().sessionId
+    if (isMockSessionId(sid)) {
+      const path = MOCK_PLACEHOLDER_IMAGES.back
+      set({ backImage: path })
+      void apiUpdateMockSession(sid!, { backImage: path })
+    } else {
+      set({ backImage: image })
+    }
+  },
+
+  setSelfieImage: (image) => {
+    const sid = get().sessionId
+    if (isMockSessionId(sid)) {
+      const path = MOCK_PLACEHOLDER_IMAGES.selfie
+      set({ selfieImage: path })
+      void apiUpdateMockSession(sid!, { selfieImage: path })
+    } else {
+      set({ selfieImage: image })
+    }
+  },
   
   setError: (message) => set({ errorMessage: message, currentStep: 'error' }),
 
@@ -95,25 +141,24 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
 
   submitVerification: async () => {
     set({ currentStep: 'submitting' })
-    
-    // Store the data locally for now
-    // TODO: Send to backend when endpoint is ready
-    // const state = get()
-    // const response = await fetch('/api/verify', {
-    //   method: 'POST',
-    //   headers: { 'Content-Type': 'application/json' },
-    //   body: JSON.stringify({
-    //     sessionId: state.sessionId,
-    //     documentType: state.documentType,
-    //     frontImage: state.frontImage,
-    //     backImage: state.backImage,
-    //     selfieImage: state.selfieImage
-    //   })
-    // })
-    
-    // Simulate network delay
-    await new Promise(resolve => setTimeout(resolve, 2000))
-    
+    const state = get()
+
+    if (isMockSessionId(state.sessionId)) {
+      try {
+        await apiUpdateMockSession(state.sessionId!, {
+          documentType: state.documentType ?? undefined,
+          frontImage: state.frontImage ?? undefined,
+          backImage: state.backImage ?? undefined,
+          selfieImage: state.selfieImage ?? undefined,
+        })
+        await apiCompleteMockSession(state.sessionId!)
+      } catch (e) {
+        console.error('Mock submit failed:', e)
+      }
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, state.sessionId ? 400 : 2000))
+
     const submittedAt = new Date().toISOString()
     set({ submittedAt, currentStep: 'submitted' })
   },

@@ -73,17 +73,34 @@ class SebeVerifySDK {
   }
 
   /**
-   * Create a verification session
+   * Resolve origin where the SebeVerify app (and /api/mock/*) is hosted.
+   */
+  private getVerificationAppOrigin(): string {
+    const r = this.config.redirectUrl
+    try {
+      if (r.startsWith('http')) {
+        return new URL(r).origin
+      }
+    } catch {
+      /* fall through */
+    }
+    if (typeof window !== 'undefined') {
+      return window.location.origin
+    }
+    return ''
+  }
+
+  /**
+   * Create a verification session (mock: POST /api/mock/session)
    */
   private async createSession(): Promise<string> {
-    // Mock API call - in real implementation, this would call the backend
-    // POST /api/sdk/session
-    const mockSessionId = `sv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-    
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 500))
-    
-    return mockSessionId
+    const origin = this.getVerificationAppOrigin()
+    const res = await fetch(`${origin}/api/mock/session`, { method: 'POST' })
+    if (!res.ok) {
+      throw new Error(`Failed to create verification session (${res.status})`)
+    }
+    const data = (await res.json()) as { sessionId: string; verificationUrl: string }
+    return data.sessionId
   }
 
   /**
@@ -104,12 +121,12 @@ class SebeVerifySDK {
   }
 
   /**
-   * Get verification URL
+   * Get verification URL (path-based session id for mock + mobile QR)
    */
   private getVerificationUrl(sessionId: string): string {
-    const baseUrl = this.config.redirectUrl || window.location.origin + '/verify'
+    const origin = this.getVerificationAppOrigin()
     const returnUrl = encodeURIComponent(window.location.href)
-    return `${baseUrl}?session=${sessionId}&returnUrl=${returnUrl}`
+    return `${origin}/verify/${sessionId}?returnUrl=${returnUrl}`
   }
 
   /**

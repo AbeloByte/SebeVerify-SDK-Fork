@@ -1,78 +1,61 @@
 "use client"
 
-import { Shield, FileCheck, Camera, UserCheck } from "lucide-react"
+import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { useVerificationStore } from "@/lib/verification-store"
 
 export function IntroScreen() {
   const setStep = useVerificationStore((state) => state.setStep)
 
-  const features = [
-    {
-      icon: FileCheck,
-      title: "Document Verification",
-      description: "Upload your government-issued ID"
-    },
-    {
-      icon: Camera,
-      title: "Selfie Capture",
-      description: "Take a quick photo of yourself"
-    },
-    {
-      icon: UserCheck,
-      title: "Face Matching",
-      description: "We verify your identity securely"
-    }
-  ]
+  const goToDocSelect = () => {
+    setStep("doc-select")
+  }
 
   return (
-    <div className="flex flex-col flex-1 px-6 py-8">
-      <div className="flex-1 flex flex-col items-center justify-center text-center">
-        <div className="h-20 w-20 rounded-2xl bg-primary/10 flex items-center justify-center mb-6">
-          <Shield className="h-10 w-10 text-primary" />
+    <div className="flex min-h-full flex-1 flex-col">
+      <div className="flex flex-1 flex-col items-center px-6 pb-6 pt-10 text-center">
+        <div className="relative mb-10 flex justify-center">
+          <Image
+            src="/verify-secure.svg"
+            alt=""
+            width={144}
+            height={200}
+            className="pointer-events-none relative h-44 w-auto max-w-[10rem] object-contain drop-shadow-sm select-none"
+            priority
+            draggable={false}
+          />
         </div>
-        
-        <h1 className="text-2xl font-bold text-foreground mb-2">
-          Verify Your Identity
-        </h1>
-        
-        <p className="text-muted-foreground mb-8 max-w-sm">
-          Complete a quick verification to confirm your identity. This process takes about 2 minutes.
-        </p>
 
-        <div className="w-full max-w-sm space-y-4 mb-8">
-          {features.map((feature) => (
-            <div
-              key={feature.title}
-              className="flex items-start gap-4 p-4 rounded-xl bg-card border border-border text-left"
-            >
-              <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                <feature.icon className="h-5 w-5 text-primary" />
-              </div>
-              <div>
-                <h3 className="font-medium text-foreground">{feature.title}</h3>
-                <p className="text-sm text-muted-foreground">{feature.description}</p>
-              </div>
-            </div>
-          ))}
+        <div
+          className="mb-10 flex items-center justify-center gap-2"
+          role="presentation"
+          aria-label="Step 1 of 2"
+        >
+          <span className="h-2 w-10 rounded-full bg-primary" />
+          <span className="h-2 w-10 rounded-full bg-muted" />
         </div>
+
+        <h1 className="mb-3 max-w-[18rem] text-3xl font-bold tracking-tight text-foreground">
+          Verify your identity
+        </h1>
+
+        <p className="max-w-xs text-base leading-relaxed text-muted-foreground">
+          This helps protect your account and prevent fraud
+        </p>
       </div>
 
-      <div className="space-y-3">
-        <Button
-          onClick={() => setStep('doc-select')}
-          className="w-full h-12 text-base font-medium"
-          size="lg"
+      <div className="mt-auto w-full border-t border-border/40 bg-background px-6 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-4">
+        <button
+          type="button"
+          onClick={() => {
+            alert("JS is running! Changing step...");
+            goToDocSelect();
+          }}
+          className="h-14 w-full touch-manipulation rounded-2xl bg-blue-600 text-white text-base font-medium shadow-sm transition-all active:bg-blue-700"
         >
-          Start Verification
-        </Button>
-        
-        <p className="text-xs text-center text-muted-foreground">
-          By continuing, you agree to our{" "}
-          <a href="#" className="text-primary hover:underline">Privacy Policy</a>
-          {" "}and{" "}
-          <a href="#" className="text-primary hover:underline">Terms of Service</a>
-        </p>
+          Start verification
+        </button>
+        <p className="mt-4 text-center text-xs text-muted-foreground">Powered by SebeVerify</p>
       </div>
     </div>
   )
