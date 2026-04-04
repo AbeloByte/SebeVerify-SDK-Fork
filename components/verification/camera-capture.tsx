@@ -175,38 +175,14 @@ export function CameraCapture({
     )
   }
 
-  const showPermissionPrompt = !capturedImage && !stream
+  const [hasAutoStarted, setHasAutoStarted] = useState(false)
 
-  if (showPermissionPrompt) {
-    return (
-      <div className="flex flex-col flex-1 px-6 py-6">
-        <div className="mb-6">
-          <h1 className="mb-2 text-xl font-bold text-foreground">{title}</h1>
-          <p className="text-muted-foreground">{instructions}</p>
-        </div>
-
-        <div className="flex flex-1 flex-col items-center justify-center gap-6">
-          <div className="flex min-h-[220px] w-full max-w-sm flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-muted/30 px-6 py-10">
-            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
-              <Camera className="h-8 w-8 text-primary" />
-            </div>
-            <p className="mb-6 text-center text-sm text-muted-foreground">
-              The browser will ask to use your camera. This must be allowed to continue.
-            </p>
-            <Button
-              type="button"
-              onClick={() => void startCamera()}
-              size="lg"
-              className="h-12 w-full max-w-xs touch-manipulation"
-            >
-              <Camera className="mr-2 h-5 w-5" />
-              Allow camera
-            </Button>
-          </div>
-        </div>
-      </div>
-    )
-  }
+  useEffect(() => {
+    if (!hasAutoStarted && !capturedImage) {
+      setHasAutoStarted(true)
+      void startCamera()
+    }
+  }, [hasAutoStarted, capturedImage, startCamera])
 
   return (
     <div className="flex flex-col flex-1 px-6 py-6">

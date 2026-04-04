@@ -5,11 +5,7 @@ import {
   isMockSessionId,
 } from '@/lib/mock-api-client'
 
-const MOCK_PLACEHOLDER_IMAGES = {
-  front: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciLz4=", // Empty transparent SVG as mock
-  back: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciLz4=",
-  selfie: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciLz4=",
-}
+
 
 export type VerificationStep = 
   | 'intro' 
@@ -93,35 +89,26 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
   },
 
   setFrontImage: (image) => {
+    set({ frontImage: image })
     const sid = get().sessionId
     if (isMockSessionId(sid)) {
-      const path = MOCK_PLACEHOLDER_IMAGES.front
-      set({ frontImage: path })
-      void apiUpdateMockSession(sid!, { frontImage: path })
-    } else {
-      set({ frontImage: image })
+      void apiUpdateMockSession(sid!, { frontImage: image })
     }
   },
 
   setBackImage: (image) => {
+    set({ backImage: image })
     const sid = get().sessionId
     if (isMockSessionId(sid)) {
-      const path = MOCK_PLACEHOLDER_IMAGES.back
-      set({ backImage: path })
-      void apiUpdateMockSession(sid!, { backImage: path })
-    } else {
-      set({ backImage: image })
+      void apiUpdateMockSession(sid!, { backImage: image })
     }
   },
 
   setSelfieImage: (image) => {
+    set({ selfieImage: image })
     const sid = get().sessionId
     if (isMockSessionId(sid)) {
-      const path = MOCK_PLACEHOLDER_IMAGES.selfie
-      set({ selfieImage: path })
-      void apiUpdateMockSession(sid!, { selfieImage: path })
-    } else {
-      set({ selfieImage: image })
+      void apiUpdateMockSession(sid!, { selfieImage: image })
     }
   },
   
@@ -142,19 +129,25 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
   submitVerification: async () => {
     set({ currentStep: 'submitting' })
     const state = get()
+    let sid = state.sessionId
 
-    if (isMockSessionId(state.sessionId)) {
-      try {
-        await apiUpdateMockSession(state.sessionId!, {
-          documentType: state.documentType ?? undefined,
-          frontImage: state.frontImage ?? undefined,
-          backImage: state.backImage ?? undefined,
-          selfieImage: state.selfieImage ?? undefined,
-        })
-        await apiCompleteMockSession(state.sessionId!)
-      } catch (e) {
-        console.error('Mock submit failed:', e)
+    try {
+      // Force generating a session if manually testing locally, so mock API runs!
+      if (!isMockSessionId(sid)) {
+        const res = await fetch("/api/mock/session", { method: "POST", headers: { "Content-Type": "application/json" } })
+        const json = await res.json()
+        sid = json.sessionId
       }
+
+      await apiUpdateMockSession(sid!, {
+        documentType: state.documentType ?? undefined,
+        frontImage: state.frontImage ?? undefined,
+        backImage: state.backImage ?? undefined,
+        selfieImage: state.selfieImage ?? undefined,
+      })
+      await apiCompleteMockSession(sid!)
+    } catch (e) {
+      console.error('Mock submit failed:', e)
     }
 
     await new Promise((resolve) => setTimeout(resolve, state.sessionId ? 400 : 2000))
