@@ -135,10 +135,10 @@ class SebeVerifySDK {
   async start(): Promise<void> {
     try {
       this.emit('started')
-      
+
       // Create session
       this.sessionId = await this.createSession()
-      
+
       if (this.isMobile()) {
         // On mobile, redirect directly to verification
         window.location.href = this.getVerificationUrl(this.sessionId)
@@ -157,7 +157,7 @@ class SebeVerifySDK {
   private showModal(): void {
     if (!this.sessionId) return
 
-    const primaryColor = this.config.theme?.primaryColor || '#2563eb'
+    const primaryColor = this.config.theme?.primaryColor || '#000000'
     const borderRadius = this.config.theme?.borderRadius || '12px'
     const verifyUrl = this.getVerificationUrl(this.sessionId)
     const qrCodeUrl = this.getQRCodeUrl(this.sessionId)
@@ -350,32 +350,32 @@ class SebeVerifySDK {
         </div>
         <h2 class="sv-title">Verify Your Identity</h2>
         <p class="sv-subtitle">Scan the QR code with your phone to continue verification</p>
-        
+
         <div class="sv-status waiting" id="sv-status">
           <div class="sv-spinner"></div>
           <span>Waiting for document submission...</span>
         </div>
-        
+
         <div class="sv-qr-container">
           <div class="sv-qr-code">
             <img src="${qrCodeUrl}" alt="QR Code" />
           </div>
           <p class="sv-instruction">Point your camera at the QR code</p>
         </div>
-        
+
         <div class="sv-divider">
           <div class="sv-divider-line"></div>
           <span class="sv-divider-text">or send link</span>
           <div class="sv-divider-line"></div>
         </div>
-        
+
         <div class="sv-send-link">
           <input type="email" class="sv-input" placeholder="Enter email or phone" id="sv-contact-input" />
           <button class="sv-btn" id="sv-send-btn">Send</button>
         </div>
-        
+
         <button class="sv-btn sv-btn-outline sv-close" id="sv-close-btn">Cancel</button>
-        
+
         <p class="sv-footer">Powered by SebeVerify</p>
       </div>
     `
@@ -411,7 +411,7 @@ class SebeVerifySDK {
     // Mock sending link
     console.log('[SebeVerify] Sending link to:', value)
     alert(`Verification link sent to ${value}`)
-    
+
     this.emit('mobile_opened')
   }
 
@@ -449,7 +449,7 @@ class SebeVerifySDK {
   private handleMessage(event: MessageEvent): void {
     if (event.data?.type === 'sebeverify_result') {
       const { status, sessionId } = event.data
-      
+
       if (sessionId === this.sessionId) {
         if (status === 'success') {
           this.handleSuccess()
@@ -488,7 +488,7 @@ class SebeVerifySDK {
     }
 
     this.emit('success', result)
-    
+
     // Auto-close after success
     setTimeout(() => this.close(), 2000)
   }

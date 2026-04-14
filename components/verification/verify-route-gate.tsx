@@ -25,15 +25,17 @@ export function VerifyRouteGate({
   const [showFlow, setShowFlow] = useState(initialMobileFlow)
 
   useEffect(() => {
-    const update = () => {
-      const narrow = window.matchMedia("(max-width: 768px)").matches
+    const checkMobile = () => {
+      // 1. Check for strict mobile user agents
       const uaMobile = MOBILE_UA.test(navigator.userAgent)
-      setShowFlow(narrow || uaMobile)
+      // 2. Check for physical touch hardware (iPad/Tablets sometimes miss UA string)
+      const hasTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0)
+
+      // Only allow flow if it's a PROVABLE mobile device (or dev tools spoofing one)
+      // Prevent desktop users from simply "resizing" their window to bypass the lock!
+      setShowFlow(uaMobile && hasTouch)
     }
-    update()
-    const mq = window.matchMedia("(max-width: 768px)")
-    mq.addEventListener("change", update)
-    return () => mq.removeEventListener("change", update)
+    checkMobile()
   }, [])
 
   if (!showFlow) {

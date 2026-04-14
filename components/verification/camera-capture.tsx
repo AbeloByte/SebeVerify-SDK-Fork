@@ -68,10 +68,39 @@ export function CameraCapture({
           return null
         })
 
-        const mediaStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: mode } },
-          audio: false,
-        })
+        let mediaStream: MediaStream | null = null
+        let attempts = 0
+        let lastError: any = null
+
+        while (attempts < 3) {
+          try {
+            mediaStream = await navigator.mediaDevices.getUserMedia({
+              video: { facingMode: { ideal: mode }, width: { ideal: 1280 } },
+              audio: false,
+            })
+            break // Success!
+          } catch (err: any) {
+            lastError = err
+            // If the hardware is still locked from a previous screen or OS quirk, retry
+            if (
+              err.name === "NotReadableError" ||
+              err.name === "TrackStartError" ||
+              err.name === "AbortError"
+            ) {
+              attempts++
+              if (attempts < 3) {
+                // Sleep for 600ms to let the camera driver cool down/release
+                await new Promise((r) => setTimeout(r, 600))
+              }
+            } else {
+              throw err // Permissions or fatal errors break immediately
+            }
+          }
+        }
+
+        if (!mediaStream) {
+          throw lastError
+        }
 
         // Just set the stream! The useEffect will catch it and attach it to the video element.
         setStream(mediaStream)
@@ -149,6 +178,15 @@ export function CameraCapture({
     void startCamera(next)
   }
 
+  const [hasAutoStarted, setHasAutoStarted] = useState(false)
+
+  useEffect(() => {
+    if (!hasAutoStarted && !capturedImage) {
+      setHasAutoStarted(true)
+      void startCamera()
+    }
+  }, [hasAutoStarted, capturedImage, startCamera])
+
   if (error) {
     return (
       <div className="flex flex-col flex-1 px-6 py-6">
@@ -174,15 +212,6 @@ export function CameraCapture({
       </div>
     )
   }
-
-  const [hasAutoStarted, setHasAutoStarted] = useState(false)
-
-  useEffect(() => {
-    if (!hasAutoStarted && !capturedImage) {
-      setHasAutoStarted(true)
-      void startCamera()
-    }
-  }, [hasAutoStarted, capturedImage, startCamera])
 
   return (
     <div className="flex flex-col flex-1 px-6 py-6">

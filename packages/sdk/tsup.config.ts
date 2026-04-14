@@ -1,7 +1,7 @@
 import { defineConfig } from 'tsup'
 
 export default defineConfig({
-  entry: ['lib/sebeverify-sdk.ts'],
+  entry: ['src/index.ts'],
   format: ['cjs', 'esm', 'iife'],
   globalName: 'SebeVerify',
   dts: false,

@@ -41,7 +41,11 @@ declare class SebeVerifySDK {
     off(event: EventType, callback: EventCallback): this;
     private emit;
     /**
-     * Create a verification session
+     * Resolve origin where the SebeVerify app (and /api/mock/*) is hosted.
+     */
+    private getVerificationAppOrigin;
+    /**
+     * Create a verification session (mock: POST /api/mock/session)
      */
     private createSession;
     /**
@@ -53,7 +57,7 @@ declare class SebeVerifySDK {
      */
     private getQRCodeUrl;
     /**
-     * Get verification URL
+     * Get verification URL (path-based session id for mock + mobile QR)
      */
     private getVerificationUrl;
     /**

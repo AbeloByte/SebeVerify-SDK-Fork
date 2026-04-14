@@ -1,21 +1,11 @@
 {
-  "name": "@sebeverify/web-sdk",
+  "name": "sebeverify-platform",
   "version": "0.1.0",
-  "private": false,
-  "main": "./dist/sebeverify-sdk.js",
-  "module": "./dist/sebeverify-sdk.mjs",
-  "types": "./dist/sebeverify-sdk.d.ts",
-  "exports": {
-    ".": {
-      "require": "./dist/sebeverify-sdk.js",
-      "import": "./dist/sebeverify-sdk.mjs",
-      "types": "./dist/sebeverify-sdk.d.ts"
-    }
-  },
+  "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "build:sdk": "tsup && tsc lib/sebeverify-sdk.ts --declaration --emitDeclarationOnly --outDir dist --skipLibCheck",
+    "build:sdk": "pnpm --filter @sebeverify/web-sdk build",
     "start": "next start",
     "lint": "eslint ."
   },

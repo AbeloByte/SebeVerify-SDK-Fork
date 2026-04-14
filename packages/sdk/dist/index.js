@@ -1,4 +1,4 @@
-"use strict";var c=Object.defineProperty;var u=Object.getOwnPropertyDescriptor;var f=Object.getOwnPropertyNames;var m=Object.prototype.hasOwnProperty;var g=(r,e)=>{for(var t in e)c(r,t,{get:e[t],enumerable:!0})},b=(r,e,t,s)=>{if(e&&typeof e=="object"||typeof e=="function")for(let i of f(e))!m.call(r,i)&&i!==t&&c(r,i,{get:()=>e[i],enumerable:!(s=u(e,i))||s.enumerable});return r};var x=r=>b(c({},"__esModule",{value:!0}),r);var p=(r,e,t)=>new Promise((s,i)=>{var a=n=>{try{o(t.next(n))}catch(d){i(d)}},l=n=>{try{o(t.throw(n))}catch(d){i(d)}},o=n=>n.done?s(n.value):Promise.resolve(n.value).then(a,l);o((t=t.apply(r,e)).next())});var E={};g(E,{default:()=>w,init:()=>h});module.exports=x(E);var v=class{constructor(e){this.eventListeners=new Map;this.sessionId=null;this.modalElement=null;this.checkInterval=null;this.config=e,this.eventListeners=new Map}on(e,t){return this.eventListeners.has(e)||this.eventListeners.set(e,[]),this.eventListeners.get(e).push(t),this}off(e,t){let s=this.eventListeners.get(e);if(s){let i=s.indexOf(t);i>-1&&s.splice(i,1)}return this}emit(e,t){let s=this.eventListeners.get(e);s&&s.forEach(i=>i(t))}createSession(){return p(this,null,function*(){let e=`sv_${Date.now()}_${Math.random().toString(36).substr(2,9)}`;return yield new Promise(t=>setTimeout(t,500)),e})}isMobile(){return/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)}getQRCodeUrl(e){let t=this.getVerificationUrl(e);return`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(t)}`}getVerificationUrl(e){let t=this.config.redirectUrl||window.location.origin+"/verify",s=encodeURIComponent(window.location.href);return`${t}?session=${e}&returnUrl=${s}`}start(){return p(this,null,function*(){try{this.emit("started"),this.sessionId=yield this.createSession(),this.isMobile()?window.location.href=this.getVerificationUrl(this.sessionId):this.showModal()}catch(e){this.emit("error",e)}})}showModal(){var o,n;if(!this.sessionId)return;let e=((o=this.config.theme)==null?void 0:o.primaryColor)||"#2563eb",t=((n=this.config.theme)==null?void 0:n.borderRadius)||"12px",s=this.getVerificationUrl(this.sessionId),i=this.getQRCodeUrl(this.sessionId);this.modalElement=document.createElement("div"),this.modalElement.id="sebeverify-modal",this.modalElement.innerHTML=`
+"use strict";var r=Object.defineProperty;var l=Object.getOwnPropertyDescriptor;var d=Object.getOwnPropertyNames;var c=Object.prototype.hasOwnProperty;var p=(n,e)=>{for(var t in e)r(n,t,{get:e[t],enumerable:!0})},v=(n,e,t,i)=>{if(e&&typeof e=="object"||typeof e=="function")for(let s of d(e))!c.call(n,s)&&s!==t&&r(n,s,{get:()=>e[s],enumerable:!(i=l(e,s))||i.enumerable});return n};var h=n=>v(r({},"__esModule",{value:!0}),n);var g={};p(g,{default:()=>f,init:()=>a});module.exports=h(g);var o=class{config;eventListeners=new Map;sessionId=null;modalElement=null;checkInterval=null;constructor(e){this.config=e,this.eventListeners=new Map}on(e,t){return this.eventListeners.has(e)||this.eventListeners.set(e,[]),this.eventListeners.get(e).push(t),this}off(e,t){let i=this.eventListeners.get(e);if(i){let s=i.indexOf(t);s>-1&&i.splice(s,1)}return this}emit(e,t){let i=this.eventListeners.get(e);i&&i.forEach(s=>s(t))}getVerificationAppOrigin(){let e=this.config.redirectUrl;try{if(e.startsWith("http"))return new URL(e).origin}catch{}return typeof window<"u"?window.location.origin:""}async createSession(){let e=this.getVerificationAppOrigin(),t=await fetch(`${e}/api/mock/session`,{method:"POST"});if(!t.ok)throw new Error(`Failed to create verification session (${t.status})`);return(await t.json()).sessionId}isMobile(){return/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)}getQRCodeUrl(e){let t=this.getVerificationUrl(e);return`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(t)}`}getVerificationUrl(e){let t=this.getVerificationAppOrigin(),i=encodeURIComponent(window.location.href);return`${t}/verify/${e}?returnUrl=${i}`}async start(){try{this.emit("started"),this.sessionId=await this.createSession(),this.isMobile()?window.location.href=this.getVerificationUrl(this.sessionId):this.showModal()}catch(e){this.emit("error",e)}}showModal(){if(!this.sessionId)return;let e=this.config.theme?.primaryColor||"#000000",t=this.config.theme?.borderRadius||"12px",i=this.getVerificationUrl(this.sessionId),s=this.getQRCodeUrl(this.sessionId);this.modalElement=document.createElement("div"),this.modalElement.id="sebeverify-modal",this.modalElement.innerHTML=`
       <style>
         #sebeverify-modal {
           position: fixed;
@@ -183,38 +183,38 @@
         </div>
         <h2 class="sv-title">Verify Your Identity</h2>
         <p class="sv-subtitle">Scan the QR code with your phone to continue verification</p>
-        
+
         <div class="sv-status waiting" id="sv-status">
           <div class="sv-spinner"></div>
           <span>Waiting for document submission...</span>
         </div>
-        
+
         <div class="sv-qr-container">
           <div class="sv-qr-code">
-            <img src="${i}" alt="QR Code" />
+            <img src="${s}" alt="QR Code" />
           </div>
           <p class="sv-instruction">Point your camera at the QR code</p>
         </div>
-        
+
         <div class="sv-divider">
           <div class="sv-divider-line"></div>
           <span class="sv-divider-text">or send link</span>
           <div class="sv-divider-line"></div>
         </div>
-        
+
         <div class="sv-send-link">
           <input type="email" class="sv-input" placeholder="Enter email or phone" id="sv-contact-input" />
           <button class="sv-btn" id="sv-send-btn">Send</button>
         </div>
-        
+
         <button class="sv-btn sv-btn-outline sv-close" id="sv-close-btn">Cancel</button>
-        
+
         <p class="sv-footer">Powered by SebeVerify</p>
       </div>
-    `,document.body.appendChild(this.modalElement);let a=this.modalElement.querySelector("#sv-close-btn");a==null||a.addEventListener("click",()=>this.close());let l=this.modalElement.querySelector("#sv-send-btn");l==null||l.addEventListener("click",()=>this.sendLink()),this.startStatusPolling(),window.addEventListener("message",this.handleMessage.bind(this))}sendLink(){let e=document.querySelector("#sv-contact-input"),t=e==null?void 0:e.value;if(!t){alert("Please enter an email or phone number");return}console.log("[SebeVerify] Sending link to:",t),alert(`Verification link sent to ${t}`),this.emit("mobile_opened")}startStatusPolling(){let e=()=>{let t=new URLSearchParams(window.location.search),s=t.get("status"),i=t.get("session");s&&i===this.sessionId&&(s==="success"?this.handleSuccess():s==="cancelled"&&this.handleCancel(),window.history.replaceState({},"",window.location.pathname))};e(),this.checkInterval=setInterval(e,1e3)}handleMessage(e){var t;if(((t=e.data)==null?void 0:t.type)==="sebeverify_result"){let{status:s,sessionId:i}=e.data;i===this.sessionId&&(s==="success"?this.handleSuccess():s==="error"&&this.handleError(new Error(e.data.message||"Verification failed")))}}handleSuccess(){let e={sessionId:this.sessionId,status:"submitted",submissionData:{documentType:"national_id",submittedAt:new Date().toISOString(),message:"Your verification is being processed. You will be notified once complete."}},t=document.querySelector("#sv-status");t&&(t.className="sv-status",t.innerHTML=`
+    `,document.body.appendChild(this.modalElement),this.modalElement.querySelector("#sv-close-btn")?.addEventListener("click",()=>this.close()),this.modalElement.querySelector("#sv-send-btn")?.addEventListener("click",()=>this.sendLink()),this.startStatusPolling(),window.addEventListener("message",this.handleMessage.bind(this))}sendLink(){let t=document.querySelector("#sv-contact-input")?.value;if(!t){alert("Please enter an email or phone number");return}console.log("[SebeVerify] Sending link to:",t),alert(`Verification link sent to ${t}`),this.emit("mobile_opened")}startStatusPolling(){let e=()=>{let t=new URLSearchParams(window.location.search),i=t.get("status"),s=t.get("session");i&&s===this.sessionId&&(i==="success"?this.handleSuccess():i==="cancelled"&&this.handleCancel(),window.history.replaceState({},"",window.location.pathname))};e(),this.checkInterval=setInterval(e,1e3)}handleMessage(e){if(e.data?.type==="sebeverify_result"){let{status:t,sessionId:i}=e.data;i===this.sessionId&&(t==="success"?this.handleSuccess():t==="error"&&this.handleError(new Error(e.data.message||"Verification failed")))}}handleSuccess(){let e={sessionId:this.sessionId,status:"submitted",submissionData:{documentType:"national_id",submittedAt:new Date().toISOString(),message:"Your verification is being processed. You will be notified once complete."}},t=document.querySelector("#sv-status");t&&(t.className="sv-status",t.innerHTML=`
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M9 12l2 2 4-4" />
           <circle cx="12" cy="12" r="10" />
         </svg>
         <span>Documents submitted for review!</span>
-      `),this.emit("success",e),setTimeout(()=>this.close(),2e3)}handleError(e){this.emit("error",e),this.close()}handleCancel(){let e={sessionId:this.sessionId,status:"cancelled"};this.emit("cancelled",e),this.close()}close(){this.checkInterval&&(clearInterval(this.checkInterval),this.checkInterval=null),window.removeEventListener("message",this.handleMessage.bind(this)),this.modalElement&&(this.modalElement.remove(),this.modalElement=null)}destroy(){this.close(),this.eventListeners.clear(),this.sessionId=null}};function h(r){if(!r.apiKey)throw new Error("SebeVerify: apiKey is required");if(!r.redirectUrl)throw new Error("SebeVerify: redirectUrl is required");return new v(r)}var y={init:h},w=y;0&&(module.exports={init});
+      `),this.emit("success",e),setTimeout(()=>this.close(),2e3)}handleError(e){this.emit("error",e),this.close()}handleCancel(){let e={sessionId:this.sessionId,status:"cancelled"};this.emit("cancelled",e),this.close()}close(){this.checkInterval&&(clearInterval(this.checkInterval),this.checkInterval=null),window.removeEventListener("message",this.handleMessage.bind(this)),this.modalElement&&(this.modalElement.remove(),this.modalElement=null)}destroy(){this.close(),this.eventListeners.clear(),this.sessionId=null}};function a(n){if(!n.apiKey)throw new Error("SebeVerify: apiKey is required");if(!n.redirectUrl)throw new Error("SebeVerify: redirectUrl is required");return new o(n)}var u={init:a},f=u;0&&(module.exports={init});
