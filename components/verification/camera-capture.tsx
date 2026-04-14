@@ -32,6 +32,9 @@ export function CameraCapture({
   )
 
   const stopCamera = useCallback(() => {
+    if (videoRef.current) {
+      videoRef.current.srcObject = null
+    }
     setStream((prev) => {
       if (prev) {
         prev.getTracks().forEach((track) => track.stop())
@@ -104,9 +107,10 @@ export function CameraCapture({
 
         // Just set the stream! The useEffect will catch it and attach it to the video element.
         setStream(mediaStream)
-      } catch (err) {
-        console.error("Camera error:", err)
-        const e = err as Error
+      } catch (err: any) {
+        // Suppress console.error in Next.js 16 to prevent giant Dev-Mode red-screens.
+        // We handle the error gracefully in the UI immediately below via setError().
+        const e = err
         if (e.name === "AbortError" || e.message?.includes("Timeout")) {
           setError(
             "Camera took too long to start. Please close other apps using the camera and try again."
@@ -139,7 +143,8 @@ export function CameraCapture({
       videoRef.current.srcObject = stream
       videoRef.current.onloadedmetadata = () => setIsReady(true)
       videoRef.current.onplay = () => setIsReady(true)
-      videoRef.current.play().catch(console.error)
+      // Ignore AbortError if load is interrupted by component remount/fast routing
+      videoRef.current.play().catch(() => { /* silent catch */ })
     }
   }, [stream])
 

@@ -1,97 +1,64 @@
-# SebeVerify Web SDK
+# SebeVerify ✨
 
-SebeVerify Web SDK is a robust, mobile-first identity verification application built with Next.js. It provides a seamless, step-by-step user interface for capturing official identification documents (National IDs, Passports) and facial selfies using native device cameras. 
+SebeVerify is a state-of-the-art Identity Verification and KYC (Know Your Customer) platform designed to easily integrate directly into merchant applications. It allows users to securely verify their identity via ID capture and facial liveness checks, utilizing a seamless "Desktop-to-Mobile" QR code handoff.
 
-## 🚀 Tech Stack
-- **Framework:** Next.js (App Router, Turbopack)
-- **Library:** React 19
-- **Language:** TypeScript
-- **State Management:** Zustand
-- **Styling:** Tailwind CSS, Radix UI (Shadcn)
-- **Icons:** Lucide React
+## 🏗️ Project Architecture (Root Workspace Monorepo)
 
-## ✨ Key Features
-- **Mobile-First UX:** Automatically detects desktop users and elegantly blocks them with a QR Code overlay, forcing them to transition to their mobile device to access the camera hardware.
-- **Dynamic Camera Capture:** Robust `getUserMedia` integration that automatically requests the correct camera (environment face for IDs, user face for selfies). Features fallback modes for multi-lens Android/Samsung devices.
-- **Intelligent Flow Control:** Step-by-step verification logic tailored by document type (e.g., skips the back-card scan for Passports).
-- **Local Data Storage:** Submissions are bundled via the mock API and saved directly into the local `document_data/sess_[id]` directory as raw `.jpg` files alongside a `metadata.json` payload.
-- **Touch-Optimized:** Custom React lifecycle and touch-event mappings guarantee that UI buttons are perfectly responsive, bypassing Chromium's tap-to-scroll cancellation bugs.
+This project has been heavily restructured into a **Root Workspace Monorepo** using `pnpm`. This architecture provides massive benefits for both deployment speed and NPM publishing purity.
 
-## 📦 Project Structure
-- `app/verify/`: The core Next.js App Router endpoints. Handles the layout gate and initializes the Client component framework.
-- `app/api/mock/`: Next.js Route handlers that mock the backend API architecture. Contains the final submission logic to write Base64 images to the local filesystem.
-- `components/verification/`: Contains the modular UI steps (`intro-screen`, `doc-select`, `camera-capture`, `review-document`, etc.).
-- `lib/verification-store.ts`: The central Zustand state architecture powering the step-by-step progression and holding image data.
+### 1. The Core Web Application (Next.js)
+**Location:** `/` (Project Root)
+*   **Purpose:** The central UI application that powers the Dashboard, onboarding, and the highly-interactive Mobile Camera Flow.
+*   **Deployment:** Powered by Next.js 14/15 App Router, this root folder is natively picked up by platforms like Vercel for absolute "zero-config" deployment.
+*   **Key Tech:** React, Next.js, Tailwind CSS, Shadcn UI, Zustand State Management.
 
-## 🛠 Getting Started
+### 2. The Merchant Web SDK (`@sebeverify/web-sdk`)
+**Location:** `/packages/sdk/`
+*   **Purpose:** A hyper-lightweight, 0-dependency, Vanilla JavaScript SDK that merchants install via NPM. This script is dropped onto merchant websites to trigger the SebeVerify system.
+*   **Purity:** By isolating this in `packages/sdk` and defining it in `pnpm-workspace.yaml`, we guarantee that massive framework dependencies (like React and Next.js) **never** bloat the final NPM package.
+*   **Build System:** Uses `tsup` for micro-bundling and fast TypeScript compilation logic.
 
-### 1. Installation
-Install the project dependencies using `pnpm`:
+---
+
+## 🚀 Core Functionality & Features
+
+### The Verification Flow
+1. **Cross-Device Handoff:** Desktop users are presented with a QR code, gracefully transferring their secure active session to their mobile device for high-quality camera capture.
+2. **Document Capture Engine:** Guides users to physically photograph the front and back of their Government ID (National ID, Passport, Driver's License) with overlay guidance.
+3. **Robust Hardware Layer:** Integrates highly resilient WebRTC code. Features advanced "Camera Driver Cooldown" loop intervals to gracefully handle rapid lens switching without crashing legacy Android/iOS hardware or hitting `NotReadableError`.
+4. **Selfie & Active Liveness:** The final stage of capture ensures identity validity before securely handing the verified state back to the merchant via Webhooks.
+
+---
+
+## 🛠️ Developer Setup & Commands
+
+### Running Locally
+To launch the core Next.js application for development:
 ```bash
 pnpm install
-```
-
-### 2. Running for Development
-For standard frontend modifications, you can use the Fast Refresh developer server:
-```bash
 pnpm run dev
 ```
 
-### 3. Running for Production / Camera Testing (Recommended)
-If you need to test the application on your physical mobile phone via a local IP address (e.g. `http://10.X.X.X:3000`), we strongly recommend running the Production Build. The Next.js Turbopack dev-server and Ngrok tunnels often block or fracture the interactive React JavaScript required to initialize the camera stream on local networks.
+*Note: For testing on external mobile devices over local Wi-Fi, ensure your phone's IP address (e.g., `192.168.1.3`) is added to `allowedDevOrigins` in `next.config.mjs` to bypass Next.js 15 dev-security blocks.*
 
-To test flawlessly on a mobile device:
+### Publishing the SDK
+To build and publish the Merchant SDK independently:
 ```bash
-pnpm run build && pnpm start
+cd packages/sdk
+npm publish
 ```
 
-## ⚠️ Important: Testing the Camera on a Local IP Address
-Modern mobile browsers have strict security protocols that block camera hardware access over standard HTTP connections (except for `localhost`). When testing your app on a physical phone over your Local Area Network (`http://10.x.x.x:3000`), the camera will be blocked.
+---
 
-To bypass this without dealing with HTTPS certificates or Ngrok, use the Chrome Developer built-in bypass:
+## 📂 Documentation Archive
+All legacy architecture notes, specific technical blueprints, and the original production guides have been consolidated neatly into the `/docs/` folder.
+*   [Production Guide](./docs/PRODUCTION_GUIDE.md)
+*   [SDK Architecture Drafts](./docs/SEBEVERIFY_SDK_ARCHITECTURE.md)
+*   [Original Scaffolding Readme](./docs/OLD_README.md)
 
-1. Open Android Google Chrome.
-2. In the URL bar, go to: `chrome://flags/#unsafely-treat-insecure-origin-as-secure`
-3. Enter your active server IP address in the text box (e.g. `http://10.240.71.46:3000`).
-4. Select **Enabled** and hit the blue **Relaunch** button.
-5. You can now access your Local IP and Chrome will allow full Camera access!
+---
 
-## 💾 Where is the Data Saved?
-Since the official backend endpoint is not yet configured, the system writes everything locally for testing.
-Once you complete a verification flow, the `app/api/mock/session/[id]/complete` endpoint intercepts the request. It extracts your Base64 picture strings and saves them natively to a generated folder at the root of the project:
-`./document_data/sess_[unique_id]/`
-
-## 🔌 The Embeddable SDK Package
-The true power of SebeVerify lies in its **Embeddable NPM Package SDK**, which third-party merchants install into their own websites to trigger our app. 
-
-The core logic for this is located in `lib/sebeverify-sdk.ts`.
-
-### How It Works:
-- **Routing Intelligence:** When a merchant fires `SebeVerify.start()`, the SDK detects the user's device. If they are on a mobile device, it redirects them instantly to the Next.js verification app.
-- **Desktop QR Injection:** If the user is on a Desktop, the SDK seamlessly injects a stylized raw HTML/CSS modal *directly inside the merchant's application*. This popup displays the QR code and actively listens/polls for the Mobile app to finish!
-
-### Building the Package
-To compile the standalone SDK for distribution (via NPM or CDN), run the SDK build script:
-```bash
-pnpm run build:sdk
-```
-This leverages `tsup` to compile the TypeScript into a clean `dist/sebeverify-sdk.js` file.
-
-### Merchant Integration Example
-When developers want to integrate SebeVerify into their site, they simply do this:
-```javascript
-import SebeVerify from '@sebeverify/web-sdk';
-
-const verify = SebeVerify.init({ 
-  apiKey: 'YOUR_API_KEY', 
-  redirectUrl: 'https://verify.yourdomain.com' 
-});
-
-// Launch the verification popup / flow
-verify.start();
-
-// Listen for a successful mobile submission
-verify.on('success', (result) => {
-  console.log("User successfully captured documents!", result);
-});
-```
+## 🔮 Roadmap: AI Liveness (Coming Next)
+The absolute next step in development is upgrading the final `SelfieCapture` step to include a completely backend-free, in-browser facial AI engine.
+*   **Engine:** `Google MediaPipe`
+*   **Flow:** "Random Two" Challenge. The user's device will instantly select two random actions (e.g., *Smile*, *Turn Head Right*) and trace their blendshapes locally using 60fps face-tracking to prove biometric liveness.

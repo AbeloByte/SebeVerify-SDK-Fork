@@ -47,10 +47,7 @@ export function IntroScreen() {
       <div className="mt-auto w-full border-t border-border/40 bg-background px-6 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-4">
         <button
           type="button"
-          onClick={() => {
-            alert("JS is running! Changing step...");
-            goToDocSelect();
-          }}
+          onClick={goToDocSelect}
           className="h-14 w-full touch-manipulation rounded-2xl bg-blue-600 text-white text-base font-medium shadow-sm transition-all active:bg-blue-700"
         >
           Start verification
