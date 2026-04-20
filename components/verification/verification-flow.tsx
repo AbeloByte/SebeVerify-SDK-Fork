@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect } from "react"
 import { useVerificationStore } from "@/lib/verification-store"
 
 import { StepHeader } from "./step-header"
@@ -14,14 +15,24 @@ import { SubmittingScreen } from "./submitting-screen"
 import { SubmittedScreen } from "./submitted-screen"
 import { ErrorScreen } from "./error-screen"
 
+import { LivenessProvider, useLiveness } from "./liveness-context"
+
 interface VerificationFlowProps {
   onComplete?: () => void
   onClose?: () => void
   returnUrl?: string
 }
 
-export function VerificationFlow({ onComplete, onClose, returnUrl }: VerificationFlowProps) {
+function VerificationFlowInner({ onComplete, onClose, returnUrl }: VerificationFlowProps) {
   const currentStep = useVerificationStore((state) => state.currentStep)
+  const { initLivenessEngine } = useLiveness()
+
+  // Eager Pre-loading: Start booting the AI as soon as the user starts the ID flow
+  useEffect(() => {
+    if (['id-front', 'id-back', 'review'].includes(currentStep)) {
+      initLivenessEngine()
+    }
+  }, [currentStep, initLivenessEngine])
 
   const renderStep = () => {
     switch (currentStep) {
@@ -58,5 +69,13 @@ export function VerificationFlow({ onComplete, onClose, returnUrl }: Verificatio
         {renderStep()}
       </main>
     </div>
+  )
+}
+
+export function VerificationFlow(props: VerificationFlowProps) {
+  return (
+    <LivenessProvider>
+      <VerificationFlowInner {...props} />
+    </LivenessProvider>
   )
 }

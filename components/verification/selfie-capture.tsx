@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 import { CameraCapture } from "./camera-capture"
 import { useVerificationStore } from "@/lib/verification-store"
-import { useMediaPipe } from "@/hooks/useMediaPipe"
+import { useLiveness } from "./liveness-context"
 import { Loader2, CheckCircle2 } from "lucide-react"
 
 type ChallengeType = "smile" | "blink" | "turn_head_left" | "turn_head_right";
@@ -21,7 +21,7 @@ export function SelfieCapture() {
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const { landmarker, initLivenessEngine, isInitializing, error: mpError } = useMediaPipe()
+  const { landmarker, initLivenessEngine, isInitializing, error: mpError } = useLiveness()
 
   const [challenges, setChallenges] = useState<ChallengeType[]>([])
   const [currentChallengeIndex, setCurrentChallengeIndex] = useState(0)
@@ -85,13 +85,13 @@ export function SelfieCapture() {
         let passed = false;
 
         if (currentChallenge === "smile") {
-          const smileLeft = shapes.find(s => s.categoryName === "mouthSmileLeft")?.score || 0;
-          const smileRight = shapes.find(s => s.categoryName === "mouthSmileRight")?.score || 0;
+          const smileLeft = shapes.find((s: any) => s.categoryName === "mouthSmileLeft")?.score || 0;
+          const smileRight = shapes.find((s: any) => s.categoryName === "mouthSmileRight")?.score || 0;
           if (smileLeft > 0.5 && smileRight > 0.5) passed = true;
         }
         else if (currentChallenge === "blink") {
-          const blinkLeft = shapes.find(s => s.categoryName === "eyeBlinkLeft")?.score || 0;
-          const blinkRight = shapes.find(s => s.categoryName === "eyeBlinkRight")?.score || 0;
+          const blinkLeft = shapes.find((s: any) => s.categoryName === "eyeBlinkLeft")?.score || 0;
+          const blinkRight = shapes.find((s: any) => s.categoryName === "eyeBlinkRight")?.score || 0;
           if (blinkLeft > 0.4 && blinkRight > 0.4) passed = true;
         }
         else if (currentChallenge === "turn_head_left" || currentChallenge === "turn_head_right") {
