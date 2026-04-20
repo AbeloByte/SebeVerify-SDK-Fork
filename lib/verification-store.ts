@@ -7,16 +7,16 @@ import {
 
 
 
-export type VerificationStep = 
-  | 'intro' 
-  | 'doc-select' 
+export type VerificationStep =
+  | 'intro'
+  | 'doc-select'
   | 'id-camera-prep'
-  | 'id-front' 
-  | 'id-back' 
-  | 'review' 
-  | 'selfie' 
+  | 'id-front'
+  | 'id-back'
+  | 'review'
+  | 'selfie'
   | 'submitting'
-  | 'submitted' 
+  | 'submitted'
   | 'error'
 
 export type DocumentType = 'passport' | 'national_id' | 'driver_license'
@@ -27,6 +27,7 @@ export interface VerificationData {
   frontImage: string | null
   backImage: string | null
   selfieImage: string | null
+  livenessImages: string[]
   submittedAt: string | null
 }
 
@@ -37,6 +38,7 @@ interface VerificationState {
   frontImage: string | null
   backImage: string | null
   selfieImage: string | null
+  livenessImages: string[]
   submittedAt: string | null
   errorMessage: string | null
 
@@ -47,6 +49,7 @@ interface VerificationState {
   setFrontImage: (image: string) => void
   setBackImage: (image: string) => void
   setSelfieImage: (image: string) => void
+  setLivenessImages: (images: string[]) => void
   setError: (message: string) => void
   getVerificationData: () => VerificationData
   submitVerification: () => Promise<void>
@@ -73,13 +76,14 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
   frontImage: null,
   backImage: null,
   selfieImage: null,
+  livenessImages: [],
   submittedAt: null,
   errorMessage: null,
 
   setSessionId: (id) => set({ sessionId: id }),
-  
+
   setStep: (step) => set({ currentStep: step }),
-  
+
   setDocumentType: (type) => {
     set({ documentType: type })
     const sid = get().sessionId
@@ -111,7 +115,11 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
       void apiUpdateMockSession(sid!, { selfieImage: image })
     }
   },
-  
+
+  setLivenessImages: (images) => {
+    set({ livenessImages: images })
+  },
+
   setError: (message) => set({ errorMessage: message, currentStep: 'error' }),
 
   getVerificationData: () => {
@@ -122,6 +130,7 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
       frontImage: state.frontImage,
       backImage: state.backImage,
       selfieImage: state.selfieImage,
+      livenessImages: state.livenessImages,
       submittedAt: state.submittedAt
     }
   },
@@ -144,6 +153,7 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
         frontImage: state.frontImage ?? undefined,
         backImage: state.backImage ?? undefined,
         selfieImage: state.selfieImage ?? undefined,
+        livenessImages: state.livenessImages.length > 0 ? state.livenessImages : undefined,
       })
       await apiCompleteMockSession(sid!)
     } catch (e) {
@@ -155,7 +165,7 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
     const submittedAt = new Date().toISOString()
     set({ submittedAt, currentStep: 'submitted' })
   },
-  
+
   reset: () => set({
     sessionId: null,
     currentStep: 'intro',
@@ -163,6 +173,7 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
     frontImage: null,
     backImage: null,
     selfieImage: null,
+    livenessImages: [],
     submittedAt: null,
     errorMessage: null
   }),
@@ -170,7 +181,7 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
   goBack: () => {
     const { currentStep, documentType } = get()
     const currentIndex = stepOrder.indexOf(currentStep)
-    
+
     if (currentIndex > 0) {
       // Skip id-back for passport
       if (currentStep === 'review' && documentType === 'passport') {

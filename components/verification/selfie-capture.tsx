@@ -1,36 +1,241 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { CameraCapture } from "./camera-capture"
 import { useVerificationStore } from "@/lib/verification-store"
+import { useMediaPipe } from "@/hooks/useMediaPipe"
+import { Loader2, CheckCircle2 } from "lucide-react"
+
+type ChallengeType = "smile" | "blink" | "turn_head_left" | "turn_head_right";
+const ALL_CHALLENGES: ChallengeType[] = ["smile", "blink", "turn_head_left", "turn_head_right"];
+
+const CHALLENGE_LABELS: Record<ChallengeType, string> = {
+  smile: "😊 Smile!",
+  blink: "👁️ Blink both eyes!",
+  turn_head_left: "⬅️ Turn head left",
+  turn_head_right: "➡️ Turn head right",
+}
 
 export function SelfieCapture() {
-  const { setSelfieImage, submitVerification } = useVerificationStore()
-  const [capturedImage, setCapturedImage] = useState<string | null>(null)
+  const { setSelfieImage, setLivenessImages, submitVerification } = useVerificationStore()
 
-  const handleCapture = async (imageData: string) => {
-    if (capturedImage) {
-      // User confirmed the image - save and submit
-      setSelfieImage(imageData)
-      await submitVerification()
-    } else {
-      // First capture, show preview
-      setCapturedImage(imageData)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const { landmarker, initLivenessEngine, isInitializing, error: mpError } = useMediaPipe()
+
+  const [challenges, setChallenges] = useState<ChallengeType[]>([])
+  const [currentChallengeIndex, setCurrentChallengeIndex] = useState(0)
+  const [livenessPassed, setLivenessPassed] = useState(false)
+  const [capturedSnapshots, setCapturedSnapshots] = useState<string[]>([])
+  // Small cooldown to prevent double-detection of the same gesture
+  const cooldownRef = useRef(false)
+
+  useEffect(() => {
+    initLivenessEngine();
+    const shuffled = [...ALL_CHALLENGES].sort(() => 0.5 - Math.random());
+    setChallenges(shuffled.slice(0, 3)); // 3 random challenges
+  }, [initLivenessEngine])
+
+  // Store all 3 images when liveness is done
+  const handleComplete = async () => {
+    setLivenessImages(capturedSnapshots)
+    setSelfieImage(capturedSnapshots[capturedSnapshots.length - 1])
+    await submitVerification()
+  }
+
+  /** Grabs the current video frame to a JPEG data URL */
+  const captureSnapshot = useCallback((): string | null => {
+    const video = videoRef.current
+    const canvas = canvasRef.current
+    if (!video || !canvas) return null
+
+    const MAX_WIDTH = 480;
+    const scale = video.videoWidth > MAX_WIDTH ? MAX_WIDTH / video.videoWidth : 1;
+
+    canvas.width = video.videoWidth * scale;
+    canvas.height = video.videoHeight * scale;
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return null
+
+    // Mirror so the selfie looks natural (front camera is already mirrored in CSS)
+    ctx.translate(canvas.width, 0)
+    ctx.scale(-1, 1)
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+    // Send small size for instantly fast uploads (480p at 70% quality compresses under 70KB)
+    return canvas.toDataURL("image/jpeg", 0.7)
+  }, [])
+
+  const lastVideoTimeRef = useRef<number>(-1)
+
+  const analyzeRef = useRef<() => void>(() => {})
+  const holdStartTimeRef = useRef<number>(0)
+
+  analyzeRef.current = () => {
+    if (!videoRef.current || !landmarker || livenessPassed) return;
+
+    const video = videoRef.current;
+
+    if (video.currentTime !== lastVideoTimeRef.current && video.readyState >= 2) {
+      lastVideoTimeRef.current = video.currentTime;
+      const results = landmarker.detectForVideo(video, performance.now());
+
+      if (!cooldownRef.current && results.faceBlendshapes && results.faceBlendshapes.length > 0) {
+        const shapes = results.faceBlendshapes[0].categories;
+        const currentChallenge = challenges[currentChallengeIndex];
+        let passed = false;
+
+        if (currentChallenge === "smile") {
+          const smileLeft = shapes.find(s => s.categoryName === "mouthSmileLeft")?.score || 0;
+          const smileRight = shapes.find(s => s.categoryName === "mouthSmileRight")?.score || 0;
+          if (smileLeft > 0.5 && smileRight > 0.5) passed = true;
+        }
+        else if (currentChallenge === "blink") {
+          const blinkLeft = shapes.find(s => s.categoryName === "eyeBlinkLeft")?.score || 0;
+          const blinkRight = shapes.find(s => s.categoryName === "eyeBlinkRight")?.score || 0;
+          if (blinkLeft > 0.4 && blinkRight > 0.4) passed = true;
+        }
+        else if (currentChallenge === "turn_head_left" || currentChallenge === "turn_head_right") {
+          if (results.facialTransformationMatrixes && results.facialTransformationMatrixes.length > 0) {
+            const matrix: any = results.facialTransformationMatrixes[0];
+            const data = matrix.data || matrix;
+            const yaw = Math.atan2(-data[8], Math.sqrt(data[9] * data[9] + data[10] * data[10])) * 180 / Math.PI;
+            if (currentChallenge === "turn_head_left" && yaw < -20) passed = true;
+            if (currentChallenge === "turn_head_right" && yaw > 20) passed = true;
+          }
+        }
+
+        if (passed) {
+          if (holdStartTimeRef.current === 0) {
+            // First frame passing the threshold, start the timer
+            holdStartTimeRef.current = performance.now();
+          } else {
+            // Blinks are fast (require only 150ms), smiles/turns require 800ms to stabilize
+            const requiredHoldTime = currentChallenge === "blink" ? 150 : 800;
+            const holdDuration = performance.now() - holdStartTimeRef.current;
+
+            if (holdDuration >= requiredHoldTime) {
+              // Successfully held for long enough, take the snapshot
+              cooldownRef.current = true;
+              holdStartTimeRef.current = 0; // reset
+
+              const snapshot = captureSnapshot();
+
+              setCapturedSnapshots(prev => {
+                return snapshot ? [...prev, snapshot] : prev;
+              });
+
+              setCurrentChallengeIndex(ci => {
+                const nextIndex = ci + 1;
+                if (nextIndex >= challenges.length) {
+                  setLivenessPassed(true);
+                } else {
+                  setTimeout(() => { cooldownRef.current = false; }, 2500);
+                }
+                return nextIndex;
+              });
+            }
+          }
+        } else {
+          // If the user drops the pose before 800ms, reset the timer
+          holdStartTimeRef.current = 0;
+        }
+      }
     }
   }
 
-  const handleRetake = () => {
-    setCapturedImage(null)
-  }
+  // The master polling loop
+  useEffect(() => {
+    if (!landmarker || livenessPassed) return;
+
+    let active = true;
+    const loop = () => {
+      if (active) {
+        analyzeRef.current();
+        requestAnimationFrame(loop);
+      }
+    };
+
+    // Start loop
+    requestAnimationFrame(loop);
+
+    // Cleanup loop exactly once when unmounting or liveness finishes
+    return () => {
+      active = false;
+    };
+  }, [landmarker, livenessPassed]);
+
+  const completedCount = currentChallengeIndex;
+  const currentLabel = challenges[currentChallengeIndex]
+    ? CHALLENGE_LABELS[challenges[currentChallengeIndex]]
+    : "";
+
+  const instructions = isInitializing
+    ? "Liveness Check In Progress..."
+    : mpError
+    ? "Liveness Check Failed."
+    : livenessPassed
+    ? "Liveness Check Completed!"
+    : currentLabel;
 
   return (
-    <CameraCapture
-      title="Take a Selfie"
-      instructions="Position your face within the circle. Ensure good lighting and remove any glasses or hats."
-      onCapture={handleCapture}
-      onRetake={handleRetake}
-      capturedImage={capturedImage}
-      overlayType="selfie"
-    />
+    <div className="flex flex-col flex-1 relative">
+      <CameraCapture
+        title="Active Liveness Check"
+        instructions={instructions}
+        onCapture={() => {}}
+        capturedImage={null}
+        overlayType="selfie"
+        videoRef={videoRef}
+        hideControls={true}
+      />
+
+      {/* Hidden canvas used to take snapshots */}
+      <canvas ref={canvasRef} className="hidden" />
+
+      {/* Complete button — shown once all challenges pass */}
+      {livenessPassed && (
+        <div className="absolute bottom-8 left-0 right-0 flex justify-center z-10 px-6">
+          <button
+            type="button"
+            onClick={() => void handleComplete()}
+            className="h-14 w-full max-w-sm rounded-2xl bg-green-500 text-white font-semibold text-base shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2"
+          >
+            <CheckCircle2 className="w-5 h-5" />
+            Continue
+          </button>
+        </div>
+      )}
+      <div className="absolute top-28 left-0 right-0 flex justify-center pointer-events-none z-10">
+        <div className="bg-background/85 backdrop-blur-md px-5 py-3 rounded-full flex items-center gap-3 border shadow-lg">
+          {isInitializing ? (
+            <Loader2 className="w-5 h-5 animate-spin text-primary" />
+          ) : livenessPassed ? (
+            <CheckCircle2 className="w-5 h-5 text-green-500" />
+          ) : (
+            <div className="flex gap-2">
+              {challenges.map((_, i) => (
+                <div
+                  key={i}
+                  className={`w-3 h-3 rounded-full transition-all duration-300 ${
+                    i < completedCount
+                      ? "bg-green-500 scale-90"
+                      : i === completedCount
+                      ? "bg-amber-400 animate-pulse scale-110"
+                      : "bg-muted"
+                  }`}
+                />
+              ))}
+            </div>
+          )}
+          <span className="font-medium text-sm">
+            {livenessPassed
+              ? "Completed ✓"
+              : isInitializing
+              ? "Liveness Check In Progress..."
+              : `Step ${completedCount + 1} of ${challenges.length}`}
+          </span>
+        </div>
+      </div>
+    </div>
   )
 }

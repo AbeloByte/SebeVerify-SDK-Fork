@@ -13,6 +13,7 @@ export type MockSession = {
   frontImage?: string
   backImage?: string
   selfieImage?: string
+  livenessImages?: string[]
   createdAt: string
 }
 
