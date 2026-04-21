@@ -7,7 +7,7 @@ type RouteCtx = { params: Promise<{ id: string }> }
 
 export async function POST(_request: NextRequest, { params }: RouteCtx) {
   const { id } = await params
-  
+
   const session = getSession(id)
   if (session) {
     try {
@@ -24,12 +24,19 @@ export async function POST(_request: NextRequest, { params }: RouteCtx) {
       await saveImage(session.backImage, "back.jpg")
       await saveImage(session.selfieImage, "selfie.jpg")
 
+      if (session.livenessImages && Array.isArray(session.livenessImages)) {
+        for (let i = 0; i < session.livenessImages.length; i++) {
+          await saveImage(session.livenessImages[i], `liveness_${i + 1}.jpg`)
+        }
+      }
+
       await fs.writeFile(
         path.join(dataDir, "metadata.json"),
         JSON.stringify(
           {
             documentType: session.documentType,
             status: "approved",
+            livenessImagesVerified: session.livenessImages?.length || 0,
             createdAt: new Date().toISOString(),
           },
           null,

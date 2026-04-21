@@ -5,6 +5,19 @@ import { Camera, RotateCcw, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
+// Centralizes the video stream so we never orphan tracks when React rapidly remounts
+let activeGlobalStream: MediaStream | null = null;
+
+const killGlobalStream = () => {
+  if (activeGlobalStream) {
+    activeGlobalStream.getTracks().forEach(t => {
+      t.enabled = false;
+      t.stop();
+    });
+    activeGlobalStream = null;
+  }
+}
+
 interface CameraCaptureProps {
   onCapture: (imageData: string) => void
   onRetake?: () => void
@@ -12,6 +25,8 @@ interface CameraCaptureProps {
   title: string
   instructions: string
   overlayType?: "document" | "selfie"
+  videoRef?: React.RefObject<HTMLVideoElement | null>
+  hideControls?: boolean  // Used by liveness mode — hides the capture button entirely
 }
 
 export function CameraCapture({
@@ -21,8 +36,11 @@ export function CameraCapture({
   title,
   instructions,
   overlayType = "document",
+  videoRef: externalVideoRef,
+  hideControls = false,
 }: CameraCaptureProps) {
-  const videoRef = useRef<HTMLVideoElement>(null)
+  const internalVideoRef = useRef<HTMLVideoElement>(null)
+  const videoRef = externalVideoRef || internalVideoRef
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [stream, setStream] = useState<MediaStream | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -32,25 +50,27 @@ export function CameraCapture({
   )
 
   const stopCamera = useCallback(() => {
-    if (videoRef.current) {
+    if (videoRef?.current) {
       videoRef.current.srcObject = null
     }
-    setStream((prev) => {
-      if (prev) {
-        prev.getTracks().forEach((track) => track.stop())
-      }
-      return null
-    })
+    killGlobalStream()
+    setStream(null)
     setIsReady(false)
-  }, [])
+  }, [videoRef])
+
+  const isRequestingRef = useRef(false)
 
   const startCamera = useCallback(
     async (overrideFacing?: "user" | "environment") => {
+      // Prevent React Strict Mode from spamming twin requests that orphan the hardware
+      if (isRequestingRef.current) return;
+
       const mode = overrideFacing ?? facingMode
       try {
+        isRequestingRef.current = true;
         setError(null)
 
-        if (typeof window !== "undefined" && !window.isSecureContext) {
+        if (typeof window !== "undefined" && !window.isSecureContext && window.location.hostname !== 'localhost') {
           setError(
             "Camera needs a secure connection (HTTPS). On your phone, open the app URL over HTTPS (e.g. ngrok or your deployed site), or use USB debugging with localhost — plain http:// to a LAN IP is blocked by browsers for camera access."
           )
@@ -64,19 +84,20 @@ export function CameraCapture({
           return
         }
 
-        setStream((prev) => {
-          if (prev) {
-            prev.getTracks().forEach((track) => track.stop())
-          }
-          return null
-        })
+        // Drop any previous streams forcefully before requesting
+        killGlobalStream()
+        setStream(null)
 
         let mediaStream: MediaStream | null = null
         let attempts = 0
         let lastError: any = null
+        const maxAttempts = 6
 
-        while (attempts < 3) {
+        while (attempts < maxAttempts) {
           try {
+            // Give Android hardware extra cool-down time on retries OR on initial attempt if something else just stopped
+            await new Promise((r) => setTimeout(r, attempts === 0 ? 300 : 800))
+
             mediaStream = await navigator.mediaDevices.getUserMedia({
               video: { facingMode: { ideal: mode }, width: { ideal: 1280 } },
               audio: false,
@@ -84,19 +105,14 @@ export function CameraCapture({
             break // Success!
           } catch (err: any) {
             lastError = err
-            // If the hardware is still locked from a previous screen or OS quirk, retry
             if (
               err.name === "NotReadableError" ||
               err.name === "TrackStartError" ||
               err.name === "AbortError"
             ) {
               attempts++
-              if (attempts < 3) {
-                // Sleep for 600ms to let the camera driver cool down/release
-                await new Promise((r) => setTimeout(r, 600))
-              }
             } else {
-              throw err // Permissions or fatal errors break immediately
+              throw err
             }
           }
         }
@@ -105,27 +121,27 @@ export function CameraCapture({
           throw lastError
         }
 
-        // Just set the stream! The useEffect will catch it and attach it to the video element.
+        // Verify we haven't been bypassed by another call while awaiting
+        if (activeGlobalStream && activeGlobalStream !== mediaStream) {
+            mediaStream.getTracks().forEach(t => t.stop());
+            return;
+        }
+
+        activeGlobalStream = mediaStream;
         setStream(mediaStream)
       } catch (err: any) {
-        // Suppress console.error in Next.js 16 to prevent giant Dev-Mode red-screens.
-        // We handle the error gracefully in the UI immediately below via setError().
         const e = err
         if (e.name === "AbortError" || e.message?.includes("Timeout")) {
-          setError(
-            "Camera took too long to start. Please close other apps using the camera and try again."
-          )
+          setError("Camera took too long to start. Please close other apps using the camera and try again.")
         } else if (e.name === "NotAllowedError") {
-          setError(
-            "Camera access was denied. Tap “Allow camera” again and choose Allow in the browser prompt, or enable camera in site settings."
-          )
+          setError("Camera access was denied. Tap “Allow camera” again and choose Allow in the browser prompt, or enable camera in site settings.")
         } else if (e.name === "NotFoundError") {
           setError("No camera found on this device. Please use a device with a camera.")
         } else {
-          setError(
-            `Unable to access camera (${e.name}: ${e.message}). Please ensure camera permissions are granted and try again.`
-          )
+          setError(`Unable to access camera (${e.name}: ${e.message}). Please ensure camera permissions are granted and try again.`)
         }
+      } finally {
+        isRequestingRef.current = false;
       }
     },
     [facingMode]
@@ -157,8 +173,11 @@ export function CameraCapture({
 
     if (!context) return
 
-    canvas.width = video.videoWidth
-    canvas.height = video.videoHeight
+    const MAX_WIDTH = 640;
+    const scale = video.videoWidth > MAX_WIDTH ? MAX_WIDTH / video.videoWidth : 1;
+
+    canvas.width = video.videoWidth * scale
+    canvas.height = video.videoHeight * scale
 
     if (facingMode === "user") {
       context.translate(canvas.width, 0)
@@ -167,7 +186,8 @@ export function CameraCapture({
 
     context.drawImage(video, 0, 0, canvas.width, canvas.height)
 
-    const imageData = canvas.toDataURL("image/jpeg", 0.8)
+    // Using 0.7 compression ratio for blazing fast JSON network payloads
+    const imageData = canvas.toDataURL("image/jpeg", 0.7)
     onCapture(imageData)
     stopCamera()
   }, [facingMode, onCapture, stopCamera])
@@ -270,7 +290,7 @@ export function CameraCapture({
         <canvas ref={canvasRef} className="hidden" />
 
         <div className="mt-6 space-y-3">
-          {capturedImage ? (
+          {!hideControls && (capturedImage ? (
             <div className="flex gap-3">
               <Button
                 type="button"
@@ -301,7 +321,7 @@ export function CameraCapture({
               <Camera className="mr-2 h-5 w-5" />
               {isReady ? "Capture" : "Starting camera…"}
             </Button>
-          )}
+          ))}
         </div>
       </div>
     </div>
