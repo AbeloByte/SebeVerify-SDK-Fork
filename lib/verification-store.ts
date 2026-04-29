@@ -3,9 +3,8 @@ import {
   apiCompleteMockSession,
   apiUpdateMockSession,
   isMockSessionId,
+  isProductionSessionId,
 } from '@/lib/mock-api-client'
-
-
 
 export type VerificationStep =
   | 'intro'
@@ -42,6 +41,10 @@ interface VerificationState {
   submittedAt: string | null
   errorMessage: string | null
 
+  // SDK config (can be set externally)
+  backendUrl: string | null
+  sessionToken: string | null
+
   // Actions
   setSessionId: (id: string) => void
   setStep: (step: VerificationStep) => void
@@ -51,6 +54,7 @@ interface VerificationState {
   setSelfieImage: (image: string) => void
   setLivenessImages: (images: string[]) => void
   setError: (message: string) => void
+  setApiConfig: (config: { backendUrl?: string; sessionToken?: string }) => void
   getVerificationData: () => VerificationData
   submitVerification: () => Promise<void>
   reset: () => void
@@ -79,6 +83,8 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
   livenessImages: [],
   submittedAt: null,
   errorMessage: null,
+  backendUrl: null,
+  sessionToken: null,
 
   setSessionId: (id) => set({ sessionId: id }),
 
@@ -122,6 +128,10 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
 
   setError: (message) => set({ errorMessage: message, currentStep: 'error' }),
 
+  setApiConfig: ({ backendUrl, sessionToken }) => {
+    set({ backendUrl: backendUrl || null, sessionToken: sessionToken || null })
+  },
+
   getVerificationData: () => {
     const state = get()
     return {
@@ -140,24 +150,89 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
     const state = get()
     let sid = state.sessionId
 
-    try {
-      // Force generating a session if manually testing locally, so mock API runs!
-      if (!isMockSessionId(sid)) {
-        const res = await fetch("/api/mock/session", { method: "POST", headers: { "Content-Type": "application/json" } })
-        const json = await res.json()
-        sid = json.sessionId
-      }
+    const isProduction = isProductionSessionId(sid) && Boolean(state.backendUrl && state.sessionToken)
 
-      await apiUpdateMockSession(sid!, {
-        documentType: state.documentType ?? undefined,
-        frontImage: state.frontImage ?? undefined,
-        backImage: state.backImage ?? undefined,
-        selfieImage: state.selfieImage ?? undefined,
-        livenessImages: state.livenessImages.length > 0 ? state.livenessImages : undefined,
-      })
-      await apiCompleteMockSession(sid!)
-    } catch (e) {
-      console.error('Mock submit failed:', e)
+    if (isProduction && state.backendUrl && state.sessionToken) {
+      const sessionToken = state.sessionToken
+      try {
+        const formData = new FormData()
+        formData.append('document_type', state.documentType || 'national_id')
+        formData.append('document_id', 'ID-' + Date.now())
+
+        if (state.frontImage) {
+          const frontBlob = dataURLtoBlob(state.frontImage)
+          formData.append('document_image', frontBlob, 'front.jpg')
+        }
+
+        if (state.selfieImage) {
+          const selfieBlob = dataURLtoBlob(state.selfieImage)
+          formData.append('person_image', selfieBlob, 'selfie.jpg')
+        }
+
+        if (state.backImage) {
+          const backBlob = dataURLtoBlob(state.backImage)
+          formData.append('document_image_back', backBlob, 'back.jpg')
+        }
+
+        const uploadRes = await fetch(`${state.backendUrl}/v1/sessions/${sid}/upload`, {
+          method: 'POST',
+          headers: { 'X-Session-Token': sessionToken },
+          body: formData,
+        })
+
+        if (!uploadRes.ok) {
+          throw new Error('Failed to upload images')
+        }
+
+        const completeRes = await fetch(`${state.backendUrl}/v1/sessions/${sid}/complete`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Session-Token': sessionToken,
+          },
+          body: JSON.stringify({
+            document_type: state.documentType || 'national_id',
+            document_id: 'ID-' + Date.now(),
+            front_image: state.frontImage,
+            back_image: state.backImage,
+            selfie_image: state.selfieImage,
+            liveness_images: state.livenessImages,
+          }),
+        })
+
+        if (!completeRes.ok) {
+          throw new Error('Failed to complete session')
+        }
+
+        const completeBody = await completeRes.json() as { success?: boolean; message?: string }
+        if (!completeBody.success) {
+          throw new Error(completeBody.message || 'Verification submission failed')
+        }
+      } catch (e) {
+        console.error('Production submit failed:', e)
+        set({ errorMessage: 'Verification submission failed', currentStep: 'error' })
+        return
+      }
+    } else {
+      try {
+        if (!isMockSessionId(sid)) {
+          const res = await fetch("/api/mock/session", { method: "POST", headers: { "Content-Type": "application/json" } })
+          const json = await res.json()
+          sid = json.sessionId
+          set({ sessionId: sid })
+        }
+
+        await apiUpdateMockSession(sid!, {
+          documentType: state.documentType ?? undefined,
+          frontImage: state.frontImage ?? undefined,
+          backImage: state.backImage ?? undefined,
+          selfieImage: state.selfieImage ?? undefined,
+          livenessImages: state.livenessImages.length > 0 ? state.livenessImages : undefined,
+        })
+        await apiCompleteMockSession(sid!)
+      } catch (e) {
+        console.error('Mock submit failed:', e)
+      }
     }
 
     await new Promise((resolve) => setTimeout(resolve, state.sessionId ? 400 : 2000))
@@ -175,7 +250,9 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
     selfieImage: null,
     livenessImages: [],
     submittedAt: null,
-    errorMessage: null
+    errorMessage: null,
+    backendUrl: null,
+    sessionToken: null,
   }),
 
   goBack: () => {
@@ -183,7 +260,6 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
     const currentIndex = stepOrder.indexOf(currentStep)
 
     if (currentIndex > 0) {
-      // Skip id-back for passport
       if (currentStep === 'review' && documentType === 'passport') {
         set({ currentStep: 'id-front' })
       } else {
@@ -192,3 +268,16 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
     }
   }
 }))
+
+function dataURLtoBlob(dataURL: string): Blob {
+  const base64Data = dataURL.replace(/^data:image\/\w+;base64,/, '')
+  const byteCharacters = atob(base64Data)
+  const byteNumbers = new Array(byteCharacters.length)
+  
+  for (let i = 0; i < byteCharacters.length; i++) {
+    byteNumbers[i] = byteCharacters.charCodeAt(i)
+  }
+  
+  const byteArray = new Uint8Array(byteNumbers)
+  return new Blob([byteArray], { type: 'image/jpeg' })
+}

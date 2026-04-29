@@ -4,6 +4,7 @@
  */
 export interface SebeVerifyConfig {
     apiKey: string;
+    backendUrl?: string;
     userId?: string;
     email?: string;
     phone?: string;
@@ -15,14 +16,15 @@ export interface SebeVerifyConfig {
 }
 export interface SebeVerifyResult {
     sessionId: string;
-    status: 'submitted' | 'failed' | 'cancelled';
+    status: 'submitted' | 'failed' | 'cancelled' | 'pending';
     submissionData?: {
         documentType: string;
         submittedAt: string;
         message: string;
     };
+    requestId?: string;
 }
-type EventType = 'started' | 'mobile_opened' | 'success' | 'error' | 'cancelled';
+type EventType = 'started' | 'mobile_opened' | 'success' | 'error' | 'cancelled' | 'pending';
 type EventCallback = (data?: SebeVerifyResult | Error) => void;
 declare class SebeVerifySDK {
     private config;
@@ -30,7 +32,10 @@ declare class SebeVerifySDK {
     private sessionId;
     private modalElement;
     private checkInterval;
+    private backendUrl;
+    private sessionToken;
     constructor(config: SebeVerifyConfig);
+    private getDefaultBackendUrl;
     /**
      * Register event listener
      */
@@ -41,13 +46,29 @@ declare class SebeVerifySDK {
     off(event: EventType, callback: EventCallback): this;
     private emit;
     /**
-     * Resolve origin where the SebeVerify app (and /api/mock/*) is hosted.
+     * Resolve origin for verification app
      */
     private getVerificationAppOrigin;
     /**
-     * Create a verification session (mock: POST /api/mock/session)
+     * Create a verification session via backend API
      */
     private createSession;
+    /**
+     * Get session status from backend
+     */
+    private getSessionStatus;
+    /**
+       * Upload verification images to backend
+       */
+    private uploadVerificationImages;
+    /**
+     * Complete a verification session
+     */
+    private completeSession;
+    /**
+     * Convert base64 data URL to Blob
+     */
+    private base64ToBlob;
     /**
      * Detect if user is on mobile device
      */
@@ -57,7 +78,7 @@ declare class SebeVerifySDK {
      */
     private getQRCodeUrl;
     /**
-     * Get verification URL (path-based session id for mock + mobile QR)
+     * Get verification URL
      */
     private getVerificationUrl;
     /**
@@ -65,45 +86,29 @@ declare class SebeVerifySDK {
      */
     start(): Promise<void>;
     /**
+     * Submit verification data (used by the embedded verification flow)
+     */
+    submitVerification(data: {
+        documentType: 'passport' | 'national_id' | 'driver_license';
+        documentId: string;
+        frontImage: string;
+        backImage?: string;
+        selfieImage: string;
+        livenessImages?: string[];
+    }): Promise<SebeVerifyResult>;
+    /**
      * Show desktop modal with QR code
      */
     private showModal;
-    /**
-     * Send verification link via email/SMS
-     */
     private sendLink;
-    /**
-     * Poll for verification status
-     */
     private startStatusPolling;
-    /**
-     * Handle message from verification iframe/window
-     */
     private handleMessage;
-    /**
-     * Handle successful submission
-     */
     private handleSuccess;
-    /**
-     * Handle verification error
-     */
     private handleError;
-    /**
-     * Handle cancellation
-     */
     private handleCancel;
-    /**
-     * Close the modal
-     */
     close(): void;
-    /**
-     * Destroy the SDK instance
-     */
     destroy(): void;
 }
-/**
- * Initialize SebeVerify SDK
- */
 export declare function init(config: SebeVerifyConfig): SebeVerifySDK;
 declare const SebeVerify: {
     init: typeof init;

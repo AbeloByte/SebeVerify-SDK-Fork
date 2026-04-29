@@ -6,11 +6,18 @@ import { useVerificationStore } from "@/lib/verification-store"
 
 function readQuery() {
   if (typeof window === "undefined")
-    return { session: null as string | null, returnUrl: null as string | null }
+    return {
+      session: null as string | null,
+      returnUrl: null as string | null,
+      backendUrl: null as string | null,
+      sessionToken: null as string | null,
+    }
   const params = new URLSearchParams(window.location.search)
   return {
     session: params.get("session"),
     returnUrl: params.get("returnUrl") || params.get("return_url"),
+    backendUrl: params.get("backendUrl"),
+    sessionToken: params.get("sessionToken"),
   }
 }
 
@@ -23,16 +30,18 @@ export function VerifyPageClient({ sessionIdFromPath }: VerifyPageClientProps) {
   const [sessionId, setSessionIdState] = useState<string | null>(sessionIdFromPath ?? null)
   const [returnUrl, setReturnUrl] = useState<string | null>(null)
   const setSessionId = useVerificationStore((state) => state.setSessionId)
+  const setApiConfig = useVerificationStore((state) => state.setApiConfig)
 
   useEffect(() => {
-    const { session, returnUrl: r } = readQuery()
+    const { session, returnUrl: r, backendUrl, sessionToken } = readQuery()
     const sid = sessionIdFromPath || session
     setSessionIdState(sid)
     setReturnUrl(r)
     if (sid) {
       setSessionId(sid)
     }
-  }, [sessionIdFromPath, setSessionId])
+    setApiConfig({ backendUrl: backendUrl || undefined, sessionToken: sessionToken || undefined })
+  }, [sessionIdFromPath, setApiConfig, setSessionId])
 
   const handleComplete = () => {
     if (returnUrl) {

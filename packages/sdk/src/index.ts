@@ -5,6 +5,7 @@
 
 export interface SebeVerifyConfig {
   apiKey: string
+  backendUrl?: string
   userId?: string
   email?: string
   phone?: string
@@ -17,16 +18,31 @@ export interface SebeVerifyConfig {
 
 export interface SebeVerifyResult {
   sessionId: string
-  status: 'submitted' | 'failed' | 'cancelled'
+  status: 'submitted' | 'failed' | 'cancelled' | 'pending'
   submissionData?: {
     documentType: string
     submittedAt: string
     message: string
   }
+  requestId?: string
 }
 
-type EventType = 'started' | 'mobile_opened' | 'success' | 'error' | 'cancelled'
+type EventType = 'started' | 'mobile_opened' | 'success' | 'error' | 'cancelled' | 'pending'
 type EventCallback = (data?: SebeVerifyResult | Error) => void
+
+interface SessionData {
+  sessionId: string
+  status: 'pending' | 'approved' | 'rejected'
+  documentType?: string
+  createdAt: string
+}
+
+interface SessionCreateData {
+  session_id: string
+  session_token: string
+  url: string
+  expires_at: string
+}
 
 class SebeVerifySDK {
   private config: SebeVerifyConfig
@@ -34,10 +50,20 @@ class SebeVerifySDK {
   private sessionId: string | null = null
   private modalElement: HTMLDivElement | null = null
   private checkInterval: ReturnType<typeof setInterval> | null = null
+  private backendUrl: string
+  private sessionToken: string | null = null
 
   constructor(config: SebeVerifyConfig) {
     this.config = config
     this.eventListeners = new Map()
+    this.backendUrl = config.backendUrl || this.getDefaultBackendUrl()
+  }
+
+  private getDefaultBackendUrl(): string {
+    if (typeof window !== 'undefined') {
+      return window.location.origin
+    }
+    return ''
   }
 
   /**
@@ -73,7 +99,7 @@ class SebeVerifySDK {
   }
 
   /**
-   * Resolve origin where the SebeVerify app (and /api/mock/*) is hosted.
+   * Resolve origin for verification app
    */
   private getVerificationAppOrigin(): string {
     const r = this.config.redirectUrl
@@ -91,16 +117,161 @@ class SebeVerifySDK {
   }
 
   /**
-   * Create a verification session (mock: POST /api/mock/session)
+   * Create a verification session via backend API
    */
-  private async createSession(): Promise<string> {
-    const origin = this.getVerificationAppOrigin()
-    const res = await fetch(`${origin}/api/mock/session`, { method: 'POST' })
-    if (!res.ok) {
-      throw new Error(`Failed to create verification session (${res.status})`)
+  private async createSession(): Promise<{ sessionId: string; sessionToken: string }> {
+    const url = `${this.backendUrl}/v1/sessions`
+    const apiKey = this.config.apiKey
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': apiKey,
+      },
+      body: JSON.stringify({
+        user_id: this.config.userId,
+        redirect_url: this.config.redirectUrl,
+        document_types: ['national_id', 'passport'],
+      }),
+    })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'Failed to create session' }))
+      throw new Error(error.detail || `Failed to create verification session (${response.status})`)
     }
-    const data = (await res.json()) as { sessionId: string; verificationUrl: string }
-    return data.sessionId
+
+    const data = await response.json() as SessionCreateData
+    this.sessionToken = data.session_token
+    return {
+      sessionId: data.session_id,
+      sessionToken: data.session_token,
+    }
+  }
+
+  /**
+   * Get session status from backend
+   */
+  private async getSessionStatus(sessionId: string): Promise<SessionData | null> {
+    const apiKey = this.config.apiKey
+    try {
+      const headers: Record<string, string> = {}
+      if (this.sessionToken) {
+        headers['X-Session-Token'] = this.sessionToken
+      } else {
+        headers['X-API-Key'] = apiKey
+      }
+      const response = await fetch(`${this.backendUrl}/v1/sessions/${sessionId}`, { headers })
+      
+      if (!response.ok) {
+        return null
+      }
+      
+      return await response.json()
+    } catch {
+      return null
+    }
+  }
+
+/**
+   * Upload verification images to backend
+   */
+  private async uploadVerificationImages(
+    sessionId: string,
+    documentType: string,
+    documentId: string,
+    frontImage: Blob,
+    backImage: Blob | null,
+    selfieImage: Blob,
+    livenessImages: Blob[]
+  ): Promise<boolean> {
+    const formData = new FormData()
+    formData.append('document_type', documentType)
+    formData.append('document_id', documentId)
+    formData.append('document_image', frontImage, 'document_front.jpg')
+    formData.append('person_image', selfieImage, 'selfie.jpg')
+
+    if (backImage) {
+      formData.append('document_image_back', backImage, 'document_back.jpg')
+    }
+
+    livenessImages.forEach((blob, index) => {
+      formData.append('liveness_images', blob, `liveness_${index + 1}.jpg`)
+    })
+
+    try {
+      const apiKey = this.config.apiKey
+      const response = await fetch(
+        `${this.backendUrl}/v1/sessions/${sessionId}/upload`,
+        {
+          method: 'POST',
+          headers: this.sessionToken
+            ? { 'X-Session-Token': this.sessionToken }
+            : { 'X-API-Key': apiKey },
+          body: formData,
+        }
+      )
+
+      return response.ok
+    } catch {
+      return false
+    }
+  }
+
+  /**
+   * Complete a verification session
+   */
+  private async completeSession(
+    sessionId: string,
+    documentType: string,
+    documentId: string
+  ): Promise<{ success: boolean; requestId?: string }> {
+    const apiKey = this.config.apiKey
+    try {
+      const response = await fetch(
+        `${this.backendUrl}/v1/sessions/${sessionId}/complete`,
+        {
+          method: 'POST',
+          headers: this.sessionToken
+            ? {
+                'Content-Type': 'application/json',
+                'X-Session-Token': this.sessionToken,
+              }
+            : {
+                'Content-Type': 'application/json',
+                'X-API-Key': apiKey,
+              },
+          body: JSON.stringify({
+            document_type: documentType,
+            document_id: documentId,
+          }),
+        }
+      )
+      
+      if (!response.ok) {
+        return { success: false }
+      }
+      
+      return await response.json()
+    } catch {
+      return { success: false }
+    }
+  }
+
+  /**
+   * Convert base64 data URL to Blob
+   */
+  private base64ToBlob(base64: string, filename: string, contentType: string): Blob {
+    const base64Data = base64.replace(/^data:image\/\w+;base64,/, '')
+    const byteCharacters = atob(base64Data)
+    const byteNumbers = new Array(byteCharacters.length)
+    
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i)
+    }
+    
+    const byteArray = new Uint8Array(byteNumbers)
+    return new Blob([byteArray], { type: contentType })
   }
 
   /**
@@ -121,12 +292,14 @@ class SebeVerifySDK {
   }
 
   /**
-   * Get verification URL (path-based session id for mock + mobile QR)
+   * Get verification URL
    */
   private getVerificationUrl(sessionId: string): string {
     const origin = this.getVerificationAppOrigin()
     const returnUrl = encodeURIComponent(window.location.href)
-    return `${origin}/verify/${sessionId}?returnUrl=${returnUrl}`
+    const backendUrl = encodeURIComponent(this.backendUrl)
+    const sessionToken = encodeURIComponent(this.sessionToken || '')
+    return `${origin}/verify/${sessionId}?returnUrl=${returnUrl}&backendUrl=${backendUrl}&sessionToken=${sessionToken}`
   }
 
   /**
@@ -136,19 +309,87 @@ class SebeVerifySDK {
     try {
       this.emit('started')
 
-      // Create session
-      this.sessionId = await this.createSession()
+      const session = await this.createSession()
+      this.sessionId = session.sessionId
 
       if (this.isMobile()) {
-        // On mobile, redirect directly to verification
         window.location.href = this.getVerificationUrl(this.sessionId)
       } else {
-        // On desktop, show modal with QR code
         this.showModal()
       }
     } catch (error) {
       this.emit('error', error as Error)
     }
+  }
+
+  /**
+   * Submit verification data (used by the embedded verification flow)
+   */
+  async submitVerification(data: {
+    documentType: 'passport' | 'national_id' | 'driver_license'
+    documentId: string
+    frontImage: string
+    backImage?: string
+    selfieImage: string
+    livenessImages?: string[]
+  }): Promise<SebeVerifyResult> {
+    if (!this.sessionId) {
+      const session = await this.createSession()
+      this.sessionId = session.sessionId
+    }
+
+    const frontBlob = this.base64ToBlob(data.frontImage, 'front.jpg', 'image/jpeg')
+    const selfieBlob = this.base64ToBlob(data.selfieImage, 'selfie.jpg', 'image/jpeg')
+    let backBlob: Blob | null = null
+
+    if (data.backImage) {
+      backBlob = this.base64ToBlob(data.backImage, 'back.jpg', 'image/jpeg')
+    }
+
+    const livenessBlobs = (data.livenessImages || []).map((img, i) =>
+      this.base64ToBlob(img, `liveness_${i + 1}.jpg`, 'image/jpeg')
+    )
+
+    const uploaded = await this.uploadVerificationImages(
+      this.sessionId,
+      data.documentType,
+      data.documentId,
+      frontBlob,
+      backBlob,
+      selfieBlob,
+      livenessBlobs
+    )
+
+    if (!uploaded) {
+      throw new Error('Failed to upload verification images')
+    }
+
+    const result = await this.completeSession(
+      this.sessionId,
+      data.documentType,
+      data.documentId
+    )
+
+    const sebResult: SebeVerifyResult = {
+      sessionId: this.sessionId,
+      status: result.success ? 'submitted' : 'failed',
+      requestId: result.requestId,
+      submissionData: {
+        documentType: data.documentType,
+        submittedAt: new Date().toISOString(),
+        message: result.success
+          ? 'Your verification is being processed. You will be notified once complete.'
+          : 'Verification submission failed. Please try again.',
+      },
+    }
+
+    if (result.success) {
+      this.emit('success', sebResult)
+    } else {
+      this.emit('error', new Error('Verification submission failed'))
+    }
+
+    return sebResult
   }
 
   /**
@@ -162,7 +403,6 @@ class SebeVerifySDK {
     const verifyUrl = this.getVerificationUrl(this.sessionId)
     const qrCodeUrl = this.getQRCodeUrl(this.sessionId)
 
-    // Create modal container
     this.modalElement = document.createElement('div')
     this.modalElement.id = 'sebeverify-modal'
     this.modalElement.innerHTML = `
@@ -382,23 +622,17 @@ class SebeVerifySDK {
 
     document.body.appendChild(this.modalElement)
 
-    // Add event listeners
     const closeBtn = this.modalElement.querySelector('#sv-close-btn')
     closeBtn?.addEventListener('click', () => this.close())
 
     const sendBtn = this.modalElement.querySelector('#sv-send-btn')
     sendBtn?.addEventListener('click', () => this.sendLink())
 
-    // Start polling for verification status
     this.startStatusPolling()
 
-    // Listen for messages from the verification page
     window.addEventListener('message', this.handleMessage.bind(this))
   }
 
-  /**
-   * Send verification link via email/SMS
-   */
   private sendLink(): void {
     const input = document.querySelector('#sv-contact-input') as HTMLInputElement
     const value = input?.value
@@ -408,19 +642,14 @@ class SebeVerifySDK {
       return
     }
 
-    // Mock sending link
     console.log('[SebeVerify] Sending link to:', value)
     alert(`Verification link sent to ${value}`)
 
     this.emit('mobile_opened')
   }
 
-  /**
-   * Poll for verification status
-   */
   private startStatusPolling(): void {
-    // Check URL for status changes (from redirect)
-    const checkUrl = () => {
+    const checkStatus = async () => {
       const urlParams = new URLSearchParams(window.location.search)
       const status = urlParams.get('status')
       const session = urlParams.get('session')
@@ -431,21 +660,28 @@ class SebeVerifySDK {
         } else if (status === 'cancelled') {
           this.handleCancel()
         }
-        // Clean URL
         window.history.replaceState({}, '', window.location.pathname)
+        return
+      }
+
+      if (!this.sessionId) return
+
+      const sessionData = await this.getSessionStatus(this.sessionId)
+      if (!sessionData) return
+
+      if (sessionData.status === 'approved') {
+        this.handleSuccess()
+      } else if (sessionData.status === 'rejected') {
+        this.handleSuccess()
       }
     }
 
-    // Check immediately
-    checkUrl()
-
-    // Poll periodically (mock - in real implementation, use WebSocket or long polling)
-    this.checkInterval = setInterval(checkUrl, 1000)
+    void checkStatus()
+    this.checkInterval = setInterval(() => {
+      void checkStatus()
+    }, 1500)
   }
 
-  /**
-   * Handle message from verification iframe/window
-   */
   private handleMessage(event: MessageEvent): void {
     if (event.data?.type === 'sebeverify_result') {
       const { status, sessionId } = event.data
@@ -460,9 +696,6 @@ class SebeVerifySDK {
     }
   }
 
-  /**
-   * Handle successful submission
-   */
   private handleSuccess(): void {
     const result: SebeVerifyResult = {
       sessionId: this.sessionId!,
@@ -470,11 +703,10 @@ class SebeVerifySDK {
       submissionData: {
         documentType: 'national_id',
         submittedAt: new Date().toISOString(),
-        message: 'Your verification is being processed. You will be notified once complete.'
-      }
+        message: 'Your verification is being processed. You will be notified once complete.',
+      },
     }
 
-    // Update modal status
     const statusEl = document.querySelector('#sv-status')
     if (statusEl) {
       statusEl.className = 'sv-status'
@@ -488,34 +720,23 @@ class SebeVerifySDK {
     }
 
     this.emit('success', result)
-
-    // Auto-close after success
     setTimeout(() => this.close(), 2000)
   }
 
-  /**
-   * Handle verification error
-   */
   private handleError(error: Error): void {
     this.emit('error', error)
     this.close()
   }
 
-  /**
-   * Handle cancellation
-   */
   private handleCancel(): void {
     const result: SebeVerifyResult = {
       sessionId: this.sessionId!,
-      status: 'cancelled'
+      status: 'cancelled',
     }
     this.emit('cancelled', result)
     this.close()
   }
 
-  /**
-   * Close the modal
-   */
   close(): void {
     if (this.checkInterval) {
       clearInterval(this.checkInterval)
@@ -530,19 +751,14 @@ class SebeVerifySDK {
     }
   }
 
-  /**
-   * Destroy the SDK instance
-   */
   destroy(): void {
     this.close()
     this.eventListeners.clear()
     this.sessionId = null
+    this.sessionToken = null
   }
 }
 
-/**
- * Initialize SebeVerify SDK
- */
 export function init(config: SebeVerifyConfig): SebeVerifySDK {
   if (!config.apiKey) {
     throw new Error('SebeVerify: apiKey is required')
@@ -553,6 +769,5 @@ export function init(config: SebeVerifyConfig): SebeVerifySDK {
   return new SebeVerifySDK(config)
 }
 
-// Default export for easy importing
 const SebeVerify = { init }
 export default SebeVerify
