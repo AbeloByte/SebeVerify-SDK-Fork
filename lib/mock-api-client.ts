@@ -52,3 +52,8 @@ export async function apiCompleteMockSession(sessionId: string): Promise<{
 export function isMockSessionId(sessionId: string | null): boolean {
   return Boolean(sessionId?.startsWith("sess_"))
 }
+
+/** True when this is a production session (prod_ prefix) */
+export function isProductionSessionId(sessionId: string | null): boolean {
+  return Boolean(sessionId?.startsWith("prod_"))
+}

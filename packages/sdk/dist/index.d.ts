@@ -1,12 +1,14 @@
 /**
  * SebeVerify Web SDK
  * Embeddable identity verification SDK for merchants
+ * Compatible with SebeVerify Backend (real API)
  */
 export interface SebeVerifyConfig {
     apiKey: string;
-    userId?: string;
-    email?: string;
-    phone?: string;
+    projectId: string;
+    backendUrl?: string;
+    /** Public URL where the SebeVerify web app is hosted (serves /verify/[sessionId]) */
+    webAppUrl?: string;
     redirectUrl: string;
     theme?: {
         primaryColor?: string;
@@ -15,97 +17,94 @@ export interface SebeVerifyConfig {
 }
 export interface SebeVerifyResult {
     sessionId: string;
-    status: 'submitted' | 'failed' | 'cancelled';
+    status: "submitted" | "failed" | "cancelled" | "pending";
     submissionData?: {
         documentType: string;
         submittedAt: string;
         message: string;
     };
+    requestId?: string;
 }
-type EventType = 'started' | 'mobile_opened' | 'success' | 'error' | 'cancelled';
+type EventType = "started" | "mobile_opened" | "success" | "error" | "cancelled" | "pending";
 type EventCallback = (data?: SebeVerifyResult | Error) => void;
 declare class SebeVerifySDK {
     private config;
     private eventListeners;
     private sessionId;
+    private requestId;
+    private documentType;
+    private documentId;
     private modalElement;
-    private checkInterval;
+    private backendUrl;
+    private frontendUrl;
+    private webAppUrl;
     constructor(config: SebeVerifyConfig);
-    /**
-     * Register event listener
-     */
     on(event: EventType, callback: EventCallback): this;
-    /**
-     * Remove event listener
-     */
     off(event: EventType, callback: EventCallback): this;
     private emit;
-    /**
-     * Resolve origin where the SebeVerify app (and /api/mock/*) is hosted.
-     */
-    private getVerificationAppOrigin;
-    /**
-     * Create a verification session (mock: POST /api/mock/session)
-     */
+    private getApiHeaders;
     private createSession;
-    /**
-     * Detect if user is on mobile device
-     */
+    private uploadDocument;
+    private createModal;
+    private closeModal;
     private isMobile;
-    /**
-     * Generate QR code URL for mobile verification
-     */
-    private getQRCodeUrl;
-    /**
-     * Get verification URL (path-based session id for mock + mobile QR)
-     */
-    private getVerificationUrl;
-    /**
-     * Start the verification flow
-     */
     start(): Promise<void>;
-    /**
-     * Show desktop modal with QR code
-     */
-    private showModal;
-    /**
-     * Send verification link via email/SMS
-     */
-    private sendLink;
-    /**
-     * Poll for verification status
-     */
-    private startStatusPolling;
-    /**
-     * Handle message from verification iframe/window
-     */
-    private handleMessage;
-    /**
-     * Handle successful submission
-     */
-    private handleSuccess;
-    /**
-     * Handle verification error
-     */
-    private handleError;
-    /**
-     * Handle cancellation
-     */
-    private handleCancel;
-    /**
-     * Close the modal
-     */
-    close(): void;
-    /**
-     * Destroy the SDK instance
-     */
+    submitDocument(options: {
+        frontImage: Blob;
+        backImage?: Blob;
+        selfieImage: Blob;
+        documentType?: string;
+    }): Promise<void>;
     destroy(): void;
 }
+export default function init(config: SebeVerifyConfig): SebeVerifySDK;
+export { SebeVerifySDK };
 /**
- * Initialize SebeVerify SDK
+ * Server-side verification functions for use in Next.js API routes.
+ * These functions handle verification logic on the server.
  */
-export declare function init(config: SebeVerifyConfig): SebeVerifySDK;
-declare const SebeVerify: {
-    init: typeof init;
+export interface VerificationRequest {
+    sessionId: string;
+    documentType?: string;
+    documentId?: string;
+    frontImage?: string;
+    backImage?: string;
+    selfieImage?: string;
+}
+export interface VerificationResponse {
+    success: boolean;
+    sessionId: string;
+    status: "pending" | "approved" | "rejected";
+    message?: string;
+    requestId?: string;
+    verifiedAt?: string;
+}
+export interface CreateVerificationSessionOptions {
+    apiKey: string;
+    projectId: string;
+    backendUrl?: string;
+    documentType?: string;
+    documentId?: string;
+}
+export interface CreateVerificationSessionResult {
+    sessionId: string;
+    backendUrl: string;
+    projectId: string;
+}
+/**
+ * Creates a real verification session on SebeVerify backend.
+ */
+export declare function createVerificationSession(config: CreateVerificationSessionOptions): Promise<CreateVerificationSessionResult>;
+/**
+ * Legacy in-memory helper kept for backwards compatibility.
+ */
+export declare function initiateVerification(config: {
+    apiKey: string;
+    projectId: string;
+    backendUrl?: string;
+}): {
+    sessionId: string;
+    verificationUrl: string;
 };
-export default SebeVerify;
+export declare function verifyUser(request: VerificationRequest): VerificationResponse;
+export declare function getVerificationStatus(sessionId: string): VerificationResponse | null;
