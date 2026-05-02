@@ -1,220 +1,42 @@
-"use strict";var p=Object.defineProperty;var g=Object.getOwnPropertyDescriptor;var v=Object.getOwnPropertyNames;var f=Object.prototype.hasOwnProperty;var m=(r,e)=>{for(var s in e)p(r,s,{get:e[s],enumerable:!0})},b=(r,e,s,t)=>{if(e&&typeof e=="object"||typeof e=="function")for(let i of v(e))!f.call(r,i)&&i!==s&&p(r,i,{get:()=>e[i],enumerable:!(t=g(e,i))||t.enumerable});return r};var y=r=>b(p({},"__esModule",{value:!0}),r);var k={};m(k,{default:()=>x,init:()=>h});module.exports=y(k);var u=class{config;eventListeners=new Map;sessionId=null;modalElement=null;checkInterval=null;backendUrl;sessionToken=null;constructor(e){this.config=e,this.eventListeners=new Map,this.backendUrl=e.backendUrl||this.getDefaultBackendUrl()}getDefaultBackendUrl(){return typeof window<"u"?window.location.origin:""}on(e,s){return this.eventListeners.has(e)||this.eventListeners.set(e,[]),this.eventListeners.get(e).push(s),this}off(e,s){let t=this.eventListeners.get(e);if(t){let i=t.indexOf(s);i>-1&&t.splice(i,1)}return this}emit(e,s){let t=this.eventListeners.get(e);t&&t.forEach(i=>i(s))}getVerificationAppOrigin(){let e=this.config.redirectUrl;try{if(e.startsWith("http"))return new URL(e).origin}catch{}return typeof window<"u"?window.location.origin:""}async createSession(){let e=`${this.backendUrl}/v1/sessions`,s=this.config.apiKey,t=await fetch(e,{method:"POST",headers:{"Content-Type":"application/json","X-API-Key":s},body:JSON.stringify({user_id:this.config.userId,redirect_url:this.config.redirectUrl,document_types:["national_id","passport"]})});if(!t.ok){let n=await t.json().catch(()=>({detail:"Failed to create session"}));throw new Error(n.detail||`Failed to create verification session (${t.status})`)}let i=await t.json();return this.sessionToken=i.session_token,{sessionId:i.session_id,sessionToken:i.session_token}}async getSessionStatus(e){let s=this.config.apiKey;try{let t={};this.sessionToken?t["X-Session-Token"]=this.sessionToken:t["X-API-Key"]=s;let i=await fetch(`${this.backendUrl}/v1/sessions/${e}`,{headers:t});return i.ok?await i.json():null}catch{return null}}async uploadVerificationImages(e,s,t,i,n,c,a){let o=new FormData;o.append("document_type",s),o.append("document_id",t),o.append("document_image",i,"document_front.jpg"),o.append("person_image",c,"selfie.jpg"),n&&o.append("document_image_back",n,"document_back.jpg"),a.forEach((l,d)=>{o.append("liveness_images",l,`liveness_${d+1}.jpg`)});try{let l=this.config.apiKey;return(await fetch(`${this.backendUrl}/v1/sessions/${e}/upload`,{method:"POST",headers:this.sessionToken?{"X-Session-Token":this.sessionToken}:{"X-API-Key":l},body:o})).ok}catch{return!1}}async completeSession(e,s,t){let i=this.config.apiKey;try{let n=await fetch(`${this.backendUrl}/v1/sessions/${e}/complete`,{method:"POST",headers:this.sessionToken?{"Content-Type":"application/json","X-Session-Token":this.sessionToken}:{"Content-Type":"application/json","X-API-Key":i},body:JSON.stringify({document_type:s,document_id:t})});return n.ok?await n.json():{success:!1}}catch{return{success:!1}}}base64ToBlob(e,s,t){let i=e.replace(/^data:image\/\w+;base64,/,""),n=atob(i),c=new Array(n.length);for(let o=0;o<n.length;o++)c[o]=n.charCodeAt(o);let a=new Uint8Array(c);return new Blob([a],{type:t})}isMobile(){return/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)}getQRCodeUrl(e){let s=this.getVerificationUrl(e);return`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(s)}`}getVerificationUrl(e){let s=this.getVerificationAppOrigin(),t=encodeURIComponent(window.location.href),i=encodeURIComponent(this.backendUrl),n=encodeURIComponent(this.sessionToken||"");return`${s}/verify/${e}?returnUrl=${t}&backendUrl=${i}&sessionToken=${n}`}async start(){try{this.emit("started");let e=await this.createSession();this.sessionId=e.sessionId,this.isMobile()?window.location.href=this.getVerificationUrl(this.sessionId):this.showModal()}catch(e){this.emit("error",e)}}async submitVerification(e){if(!this.sessionId){let l=await this.createSession();this.sessionId=l.sessionId}let s=this.base64ToBlob(e.frontImage,"front.jpg","image/jpeg"),t=this.base64ToBlob(e.selfieImage,"selfie.jpg","image/jpeg"),i=null;e.backImage&&(i=this.base64ToBlob(e.backImage,"back.jpg","image/jpeg"));let n=(e.livenessImages||[]).map((l,d)=>this.base64ToBlob(l,`liveness_${d+1}.jpg`,"image/jpeg"));if(!await this.uploadVerificationImages(this.sessionId,e.documentType,e.documentId,s,i,t,n))throw new Error("Failed to upload verification images");let a=await this.completeSession(this.sessionId,e.documentType,e.documentId),o={sessionId:this.sessionId,status:a.success?"submitted":"failed",requestId:a.requestId,submissionData:{documentType:e.documentType,submittedAt:new Date().toISOString(),message:a.success?"Your verification is being processed. You will be notified once complete.":"Verification submission failed. Please try again."}};return a.success?this.emit("success",o):this.emit("error",new Error("Verification submission failed")),o}showModal(){if(!this.sessionId)return;let e=this.config.theme?.primaryColor||"#000000",s=this.config.theme?.borderRadius||"12px",t=this.getVerificationUrl(this.sessionId),i=this.getQRCodeUrl(this.sessionId);this.modalElement=document.createElement("div"),this.modalElement.id="sebeverify-modal",this.modalElement.innerHTML=`
-      <style>
-        #sebeverify-modal {
-          position: fixed;
-          inset: 0;
-          z-index: 99999;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background: rgba(0, 0, 0, 0.5);
-          backdrop-filter: blur(4px);
-          font-family: system-ui, -apple-system, sans-serif;
-        }
-        #sebeverify-modal * {
-          box-sizing: border-box;
-        }
-        .sv-modal-content {
-          background: white;
-          border-radius: ${s};
-          padding: 32px;
-          max-width: 400px;
-          width: 90%;
-          text-align: center;
-          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-          animation: sv-slide-up 0.3s ease;
-        }
-        @keyframes sv-slide-up {
-          from {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        .sv-logo {
-          width: 48px;
-          height: 48px;
-          margin: 0 auto 16px;
-          background: ${e};
-          border-radius: 12px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-        .sv-logo svg {
-          width: 28px;
-          height: 28px;
-          color: white;
-        }
-        .sv-title {
-          font-size: 20px;
-          font-weight: 600;
-          color: #111;
-          margin: 0 0 8px;
-        }
-        .sv-subtitle {
-          font-size: 14px;
-          color: #666;
-          margin: 0 0 24px;
-        }
-        .sv-qr-container {
-          background: #f9fafb;
-          border-radius: 12px;
-          padding: 24px;
-          margin-bottom: 24px;
-        }
-        .sv-qr-code {
-          width: 180px;
-          height: 180px;
-          margin: 0 auto 16px;
-          border-radius: 8px;
-          background: white;
-          padding: 8px;
-        }
-        .sv-qr-code img {
-          width: 100%;
-          height: 100%;
-        }
-        .sv-instruction {
-          font-size: 13px;
-          color: #666;
-          margin: 0;
-        }
-        .sv-divider {
-          display: flex;
-          align-items: center;
-          gap: 16px;
-          margin: 24px 0;
-        }
-        .sv-divider-line {
-          flex: 1;
-          height: 1px;
-          background: #e5e7eb;
-        }
-        .sv-divider-text {
-          font-size: 12px;
-          color: #999;
-          text-transform: uppercase;
-        }
-        .sv-send-link {
-          display: flex;
-          gap: 8px;
-          margin-bottom: 16px;
-        }
-        .sv-input {
-          flex: 1;
-          padding: 12px 16px;
-          border: 1px solid #e5e7eb;
-          border-radius: 8px;
-          font-size: 14px;
-          outline: none;
-        }
-        .sv-input:focus {
-          border-color: ${e};
-        }
-        .sv-btn {
-          padding: 12px 20px;
-          background: ${e};
-          color: white;
-          border: none;
-          border-radius: 8px;
-          font-size: 14px;
-          font-weight: 500;
-          cursor: pointer;
-          transition: opacity 0.2s;
-        }
-        .sv-btn:hover {
-          opacity: 0.9;
-        }
-        .sv-btn-outline {
-          background: transparent;
-          color: #666;
-          border: 1px solid #e5e7eb;
-        }
-        .sv-btn-outline:hover {
-          background: #f9fafb;
-        }
-        .sv-close {
-          width: 100%;
-          margin-top: 8px;
-        }
-        .sv-footer {
-          font-size: 11px;
-          color: #999;
-          margin-top: 16px;
-        }
-        .sv-status {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 8px;
-          padding: 12px;
-          background: #f0fdf4;
-          border-radius: 8px;
-          margin-bottom: 16px;
-          color: #166534;
-          font-size: 14px;
-        }
-        .sv-status.waiting {
-          background: #fef3c7;
-          color: #92400e;
-        }
-        .sv-spinner {
-          width: 16px;
-          height: 16px;
-          border: 2px solid currentColor;
-          border-top-color: transparent;
-          border-radius: 50%;
-          animation: sv-spin 1s linear infinite;
-        }
-        @keyframes sv-spin {
-          to { transform: rotate(360deg); }
-        }
-      </style>
-      <div class="sv-modal-content">
-        <div class="sv-logo">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M9 12l2 2 4-4" />
-            <circle cx="12" cy="12" r="10" />
-          </svg>
-        </div>
-        <h2 class="sv-title">Verify Your Identity</h2>
-        <p class="sv-subtitle">Scan the QR code with your phone to continue verification</p>
-
-        <div class="sv-status waiting" id="sv-status">
-          <div class="sv-spinner"></div>
-          <span>Waiting for document submission...</span>
-        </div>
-
-        <div class="sv-qr-container">
-          <div class="sv-qr-code">
-            <img src="${i}" alt="QR Code" />
-          </div>
-          <p class="sv-instruction">Point your camera at the QR code</p>
-        </div>
-
-        <div class="sv-divider">
-          <div class="sv-divider-line"></div>
-          <span class="sv-divider-text">or send link</span>
-          <div class="sv-divider-line"></div>
-        </div>
-
-        <div class="sv-send-link">
-          <input type="email" class="sv-input" placeholder="Enter email or phone" id="sv-contact-input" />
-          <button class="sv-btn" id="sv-send-btn">Send</button>
-        </div>
-
-        <button class="sv-btn sv-btn-outline sv-close" id="sv-close-btn">Cancel</button>
-
-        <p class="sv-footer">Powered by SebeVerify</p>
+"use strict";var p=Object.defineProperty;var h=Object.getOwnPropertyDescriptor;var b=Object.getOwnPropertyNames;var y=Object.prototype.hasOwnProperty;var v=(i,e)=>{for(var t in e)p(i,t,{get:e[t],enumerable:!0})},I=(i,e,t,s)=>{if(e&&typeof e=="object"||typeof e=="function")for(let n of b(e))!y.call(i,n)&&n!==t&&p(i,n,{get:()=>e[n],enumerable:!(s=h(e,n))||s.enumerable});return i};var w=i=>I(p({},"__esModule",{value:!0}),i);var S={};v(S,{SebeVerifySDK:()=>c,createVerificationSession:()=>x,default:()=>m,getVerificationStatus:()=>U,initiateVerification:()=>k,verifyUser:()=>_});module.exports=w(S);var c=class{config;eventListeners=new Map;sessionId=null;requestId=null;documentType="national-id";documentId="";modalElement=null;backendUrl;frontendUrl="";webAppUrl="";constructor(e){if(!e.apiKey)throw new Error("apiKey is required");if(!e.projectId)throw new Error("projectId is required");this.config=e,this.eventListeners=new Map,this.backendUrl=e.backendUrl||"http://localhost:8000",typeof window<"u"&&(this.frontendUrl=window.location.origin,this.webAppUrl=e.webAppUrl||this.frontendUrl)}on(e,t){return this.eventListeners.has(e)||this.eventListeners.set(e,[]),this.eventListeners.get(e).push(t),this}off(e,t){let s=this.eventListeners.get(e);if(s){let n=s.indexOf(t);n>-1&&s.splice(n,1)}return this}emit(e,t){(this.eventListeners.get(e)||[]).forEach(n=>{try{n(t)}catch(r){console.error(`Error in ${e} handler:`,r)}})}getApiHeaders(){return{"Content-Type":"application/json","X-API-Key":this.config.apiKey}}async createSession(){this.documentId=`user_${Date.now()}_${Math.random().toString(36).substr(2,9)}`;let e=`${this.backendUrl}/projects/${this.config.projectId}/verification/session/start`,t=await fetch(e,{method:"POST",headers:this.getApiHeaders(),body:JSON.stringify({document_type:this.documentType,document_id:this.documentId})});if(!t.ok){let n=await t.json().catch(()=>({detail:"Failed to create session"}));throw new Error(n.detail||`Failed to create session (${t.status})`)}let s=await t.json();return this.sessionId=s.session_id,s.session_id}async uploadDocument(e,t,s,n,r,u){let a=`${this.backendUrl}/projects/${this.config.projectId}/verification/image`,o=new FormData;o.append("session_id",e),o.append("document_type",t),o.append("document_id",s),o.append("document_image",n,"document_front.jpg"),o.append("person_image",u,"selfie.jpg"),r&&o.append("document_image_back",r,"document_back.jpg");let d=await fetch(a,{method:"POST",headers:{"X-API-Key":this.config.apiKey},body:o});if(!d.ok){let f=await d.json().catch(()=>({detail:"Failed to upload document"}));throw new Error(f.detail||`Failed to upload document (${d.status})`)}let g=await d.json();return this.requestId=g.request_id,g.request_id}createModal(e){if(this.modalElement)return;let t=document.createElement("div");t.style.cssText=`
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.9); z-index: 9999;
+      display: flex; align-items: center; justify-content: center;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    `;let s=document.createElement("div");s.style.cssText=`
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      border-radius: 20px; padding: 40px;
+      max-width: 420px; text-align: center; color: white;
+      box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+    `,s.innerHTML=`
+      <div style="font-size: 56px; margin-bottom: 20px;">\u{1F512}</div>
+      <h2 style="margin: 0 0 12px; font-size: 24px; font-weight: 600;">Verification Ready</h2>
+      <p style="color: #9ca3af; margin: 0 0 32px; line-height: 1.5;">
+        Click below to complete your identity verification
+      </p>
+      <a href="${e}" style="
+        display: block;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        text-decoration: none;
+        padding: 16px 32px;
+        border-radius: 12px;
+        font-weight: 600;
+        font-size: 16px;
+        margin-bottom: 20px;
+      ">Start Verification</a>
+      <button id="sdk-cancel-btn" style="
+        background: transparent;
+        border: 1px solid #4b5563;
+        color: #9ca3af;
+        padding: 12px 24px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 14px;
+      ">Cancel</button>
+      <div style="margin-top: 24px; padding-top: 24px; border-top: 1px solid #374151;">
+        <p style="color: #6b7280; font-size: 12px; margin: 0;">
+          You'll be redirected to complete verification
+        </p>
       </div>
-    `,document.body.appendChild(this.modalElement),this.modalElement.querySelector("#sv-close-btn")?.addEventListener("click",()=>this.close()),this.modalElement.querySelector("#sv-send-btn")?.addEventListener("click",()=>this.sendLink()),this.startStatusPolling(),window.addEventListener("message",this.handleMessage.bind(this))}sendLink(){let s=document.querySelector("#sv-contact-input")?.value;if(!s){alert("Please enter an email or phone number");return}console.log("[SebeVerify] Sending link to:",s),alert(`Verification link sent to ${s}`),this.emit("mobile_opened")}startStatusPolling(){let e=async()=>{let s=new URLSearchParams(window.location.search),t=s.get("status"),i=s.get("session");if(t&&i===this.sessionId){t==="success"?this.handleSuccess():t==="cancelled"&&this.handleCancel(),window.history.replaceState({},"",window.location.pathname);return}if(!this.sessionId)return;let n=await this.getSessionStatus(this.sessionId);n&&(n.status==="approved"?this.handleSuccess():n.status==="rejected"&&this.handleSuccess())};e(),this.checkInterval=setInterval(()=>{e()},1500)}handleMessage(e){if(e.data?.type==="sebeverify_result"){let{status:s,sessionId:t}=e.data;t===this.sessionId&&(s==="success"?this.handleSuccess():s==="error"&&this.handleError(new Error(e.data.message||"Verification failed")))}}handleSuccess(){let e={sessionId:this.sessionId,status:"submitted",submissionData:{documentType:"national_id",submittedAt:new Date().toISOString(),message:"Your verification is being processed. You will be notified once complete."}},s=document.querySelector("#sv-status");s&&(s.className="sv-status",s.innerHTML=`
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M9 12l2 2 4-4" />
-          <circle cx="12" cy="12" r="10" />
-        </svg>
-        <span>Documents submitted for review!</span>
-      `),this.emit("success",e),setTimeout(()=>this.close(),2e3)}handleError(e){this.emit("error",e),this.close()}handleCancel(){let e={sessionId:this.sessionId,status:"cancelled"};this.emit("cancelled",e),this.close()}close(){this.checkInterval&&(clearInterval(this.checkInterval),this.checkInterval=null),window.removeEventListener("message",this.handleMessage.bind(this)),this.modalElement&&(this.modalElement.remove(),this.modalElement=null)}destroy(){this.close(),this.eventListeners.clear(),this.sessionId=null,this.sessionToken=null}};function h(r){if(!r.apiKey)throw new Error("SebeVerify: apiKey is required");if(!r.redirectUrl)throw new Error("SebeVerify: redirectUrl is required");return new u(r)}var w={init:h},x=w;0&&(module.exports={init});
+    `;let n=s.querySelector("#sdk-cancel-btn");n&&n.addEventListener("click",()=>{this.closeModal(),this.emit("cancelled")}),t.appendChild(s),document.body.appendChild(t),this.modalElement=t}closeModal(){this.modalElement&&(this.modalElement.remove(),this.modalElement=null)}isMobile(){return typeof window>"u"?!1:/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)}async start(){try{this.emit("started");let e=await this.createSession(),t=`${this.webAppUrl}/verify/${e}?returnUrl=${encodeURIComponent(this.config.redirectUrl)}&backendUrl=${encodeURIComponent(this.backendUrl)}&projectId=${encodeURIComponent(this.config.projectId)}&apiKey=${encodeURIComponent(this.config.apiKey)}`;if(this.isMobile()){window.location.href=t,this.emit("mobile_opened");return}this.createModal(t)}catch(e){this.closeModal();let t=e instanceof Error?e.message:"Unknown error";throw this.emit("error",new Error(t)),e}}async submitDocument(e){if(!this.sessionId)throw new Error("No active session. Call start() first.");try{let t=e.documentType||this.documentType;await this.uploadDocument(this.sessionId,t,this.documentId,e.frontImage,e.backImage||null,e.selfieImage),this.emit("success",{sessionId:this.sessionId,status:"submitted",requestId:this.requestId||void 0,submissionData:{documentType:t,submittedAt:new Date().toISOString(),message:"Document uploaded successfully"}})}catch(t){let s=t instanceof Error?t.message:"Upload failed";throw this.emit("error",new Error(s)),t}}destroy(){this.closeModal(),this.eventListeners.clear(),this.sessionId=null,this.requestId=null}};function m(i){return new c(i)}var l=new Map;async function x(i){let e=i.backendUrl||"http://localhost:8000",t=i.documentType||"national-id",s=i.documentId||`user_${Date.now()}_${Math.random().toString(36).slice(2,11)}`,n=`${e}/projects/${i.projectId}/verification/session/start`,r=await fetch(n,{method:"POST",headers:{"Content-Type":"application/json","X-API-Key":i.apiKey},body:JSON.stringify({document_type:t,document_id:s})});if(!r.ok){let a=await r.json().catch(()=>({detail:"Failed to create verification session"})),o=typeof a?.detail=="string"?a.detail:JSON.stringify(a?.detail??a);throw new Error(`${o||"Failed to create verification session"} (${r.status})`)}return{sessionId:(await r.json()).session_id,backendUrl:e,projectId:i.projectId}}function k(i){let e=`sess_${Date.now()}_${Math.random().toString(36).substr(2,9)}`,t=i.backendUrl||"http://localhost:3000",s={success:!0,sessionId:e,status:"pending"};return l.set(e,s),{sessionId:e,verificationUrl:`${t}/verify/${e}`}}function _(i){if(!l.get(i.sessionId))return{success:!1,sessionId:i.sessionId,status:"rejected",message:"Session not found"};let t={success:!0,sessionId:i.sessionId,status:"approved",message:"Verification completed successfully",requestId:`req_${Date.now()}`,verifiedAt:new Date().toISOString()};return l.set(i.sessionId,t),t}function U(i){return l.get(i)||null}0&&(module.exports={SebeVerifySDK,createVerificationSession,getVerificationStatus,initiateVerification,verifyUser});
